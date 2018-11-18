@@ -9,9 +9,8 @@
 #include <cmath>
 #include <stdexcept>
 
-#include "./clip2tri-master/clipper/clipper.hpp"
-#include "./clip2tri-master/poly2tri/poly2tri.h"
-#include "./clip2tri-master/clip2tri/clip2tri.h"
+#include "./clipper/clipper.hpp"
+#include "./poly2tri/poly2tri.h"
 
 #include "./RVO2/RVOSimulator.h"
 #include "./RVO2/Vector2.h"
@@ -20,13 +19,15 @@
 #include "./ETP/Triangle.h"
 #include "./ETP/TriangulationSpace.h"
 
-#include "./utils.h"
+#include "./utilz.h"
 
+typedef signed long long tPos;
+typedef float tDecim;
 
 class TowerDefense  : public Nan::ObjectWrap {
 
   std::unique_ptr<RVO::RVOSimulator> sim;
-  std::unique_ptr<ETP::TriangulationSpace<float>> space;
+  std::unique_ptr<ETP::TriangulationSpace<tPos,tDecim>> space;
 
 
   public:
@@ -56,6 +57,8 @@ class TowerDefense  : public Nan::ObjectWrap {
     static NAN_METHOD( tryClipper );
     static NAN_METHOD( tryPoly2Tri );
 
+
+    static NAN_METHOD( testAngle );
 
     void init();
 

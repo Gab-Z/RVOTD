@@ -1,4 +1,4 @@
-#include "core.h"
+#include "./core.h"
 
 Nan::Persistent<v8::FunctionTemplate> TowerDefense::constructor;
 
@@ -26,6 +26,8 @@ NAN_MODULE_INIT( TowerDefense::Init ) {
   Nan::SetPrototypeMethod( ctor, "tryClipper", tryClipper );
   Nan::SetPrototypeMethod( ctor, "tryPoly2Tri", tryPoly2Tri );
 
+  Nan::SetPrototypeMethod( ctor, "testAngle", testAngle );
+
 
   //Nan::SetPrototypeMethod( ctor, "triangulate", triangulate );
   //Nan::SetPrototypeMethod( ctor, "buildTriangulation", buildTriangulation );
@@ -48,15 +50,33 @@ NAN_METHOD( TowerDefense::New ) {
 NAN_METHOD( TowerDefense::get ){
   TowerDefense* self = Nan::ObjectWrap::Unwrap<TowerDefense>(info.This());
   v8::Local<v8::Object> ret = Nan::New<v8::Object>();
-  v8::Local<v8::String> dataProp = Nan::New( "prop" ).ToLocalChecked();
-  v8::Local<v8::Value> dataValue = Nan::New( "test is working !" ).ToLocalChecked();
-  ret->Set( dataProp, dataValue );
+  //v8::Local<v8::String> dataProp = Nan::New( "prop" ).ToLocalChecked();
+//  v8::Local<v8::Value> dataValue = Nan::New( "test is working !" ).ToLocalChecked();
+  //ret->Set( dataProp, dataValue );
+
+  std::vector<int> first;
+  for (int i = 0; i < 10; i++ ){
+    first.push_back( i );
+  }
+  std::vector<int> second;
+  while( first.empty() == false ){
+    int in = first.front();
+    first.erase( first.begin() );
+    second.push_back( in );
+  }
+  size_t l = second.size();
+  v8::Local<v8::Array> arr = Nan::New<v8::Array>();
+  for( size_t i = 0; i < l; i++ ){
+    arr->Set( i, Nan::New( second[ i ] ) );
+  }
+  v8::Local<v8::String> arrProp = Nan::New( "array" ).ToLocalChecked();
+  ret->Set( arrProp, arr );
   info.GetReturnValue().Set( ret );
 }
 
 void TowerDefense::init(){
   sim = std::make_unique<RVO::RVOSimulator>();
-  space = std::make_unique<ETP::TriangulationSpace<float>>();
+  space = std::make_unique<ETP::TriangulationSpace<tPos,tDecim>>();
 }
 
 NAN_METHOD( TowerDefense::setTimeStep ){
@@ -253,9 +273,9 @@ NAN_METHOD( TowerDefense::doStep ){
   self->sim->doStep();
 }
 
-using Coord = float;
-using N = uint32_t;
-using Point = ETP::Point<Coord>;
+//using Coord = double;
+//using N = uint32_t;
+//using Point = ETP::Point<Coord>;
 
 NAN_METHOD( TowerDefense::clip2triangulate ){
   // expected array [ [[pt1x,pt1y],[pt2x,pt2y]...],[[pt1x,pt1y],[pt2x,pt2y]...],...] where first nested array represents bounding polygon and following arrays the holes
@@ -266,23 +286,25 @@ NAN_METHOD( TowerDefense::clip2triangulate ){
     return Nan::ThrowError( Nan::New( "TowerDefense::triangulate - expected argument [ 0 ] to be an array" ).ToLocalChecked() );
   }
   TowerDefense* self = Nan::ObjectWrap::Unwrap<TowerDefense>( info.This() );
+  typedef p2t::Point usedPoint;
+  typedef double Coord;
   v8::Local<v8::Array> mainArray = v8::Local<v8::Array>::Cast( info[ 0 ] );
   size_t mal = mainArray->Length();
-  std::vector<std::vector<c2t::Point>> polygons;
+  std::vector<std::vector<usedPoint>> polygons;
 
   // copy positions stored in info to std::vector<std::vector<c2t::Point>> polygons
   for( size_t ai = 0; ai < mal; ai++ ){
     v8::Local<v8::Array> polyArray = v8::Local<v8::Array>::Cast( mainArray->Get( ai ) );
     size_t pal = polyArray->Length();
-    polygons.push_back( std::vector<c2t::Point>() );
-    std::vector<c2t::Point>& usedPoly = polygons[ polygons.size() - 1 ];
+    polygons.push_back( std::vector<usedPoint>() );
+    std::vector<usedPoint>& usedPoly = polygons[ polygons.size() - 1 ];
     for( size_t pi = 0; pi < pal; pi ++ ){
       v8::Local<v8::Array> ptArr = v8::Local<v8::Array>::Cast( polyArray->Get( pi ) );
-      usedPoly.push_back( c2t::Point( (Coord) ptArr->Get( 0 )->NumberValue(), (Coord) ptArr->Get( 1 )->NumberValue() ) );
+      usedPoly.push_back( usedPoint( (Coord) ptArr->Get( 0 )->NumberValue(), (Coord) ptArr->Get( 1 )->NumberValue() ) );
     }
   }
   try{
-    self->space->buildFromPolyLines<c2t::Point>( polygons );
+    self->space->buildFromPolyLines<usedPoint>( polygons );
   }catch( const std::invalid_argument& e ){
     return Nan::ThrowError( Nan::New( e.what() ).ToLocalChecked() );
   }
@@ -309,19 +331,19 @@ NAN_METHOD( TowerDefense::tryClipper ){
   ClipperLib::ClipType clipType;
   int inputType = info[ 0 ]->NumberValue();
   if( inputType == 0 ){
-    clipType = ctIntersection;
+    clipType = ClipperLib::ctIntersection;
   }else if( inputType == 1 ){
-    clipType = ctUnion;
+    clipType = ClipperLib::ctUnion;
   }else if( inputType == 2 ){
-    clipType = ctDifference;
+    clipType = ClipperLib::ctDifference;
   }else if( inputType == 3 ){
-    clipType = ctXor;
+    clipType = ClipperLib::ctXor;
   }
 
   ClipperLib::Clipper c;
-  c.AddPaths(subj, ptSubject, true);
-  c.AddPaths(clip, ptClip, true);
-  c.Execute(clipType, solution, pftNonZero, pftNonZero);
+  c.AddPaths(subj, ClipperLib::ptSubject, true);
+  c.AddPaths(clip, ClipperLib::ptClip, true);
+  c.Execute(clipType, solution, ClipperLib::pftNonZero, ClipperLib::pftNonZero);
 
   size_t sl = solution.size();
   v8::Local<v8::Array> ret = Nan::New<v8::Array>();
@@ -376,4 +398,70 @@ NAN_METHOD( TowerDefense::tryPoly2Tri ){
     ret->Set( i, triRet );
   }
   info.GetReturnValue().Set( ret );
+}
+
+NAN_METHOD( TowerDefense::testAngle ){
+  TowerDefense* self = Nan::ObjectWrap::Unwrap<TowerDefense>( info.This() );
+  int e1pt1x = info[ 0 ]->IntegerValue();
+  int e1pt1y = info[ 1 ]->IntegerValue();
+  int e1pt2x = info[ 2 ]->IntegerValue();
+  int e1pt2y = info[ 3 ]->IntegerValue();
+
+  int e2pt1x = info[ 4 ]->IntegerValue();
+  int e2pt1y = info[ 5 ]->IntegerValue();
+  int e2pt2x = info[ 6 ]->IntegerValue();
+  int e2pt2y = info[ 7 ]->IntegerValue();
+
+  int x1, y1, x2, y2;
+  /*
+  if( e1pt1x == e2pt1x &&  e1pt1y == e2pt1y ){
+
+    x1 = e1pt1x - e1pt2x;
+    y1 = e1pt1y - e1pt2y;
+
+    x2 = e2pt2x - e2pt1x;
+    y2 = e2pt2y - e2pt1y;
+  }else if( e1pt1x == e2pt2x &&  e1pt1y == e2pt2y){
+    x1 = e1pt1x - e1pt2x;
+    y1 = e1pt1y - e1pt2y;
+
+    x2 = e2pt1x - e2pt2x;
+    y2 = e2pt1y - e2pt2y;
+  }else if( e1pt2x == e2pt1x &&  e1pt2y == e2pt1y ){
+    x1 = e1pt2x - e1pt1x;
+    y1 = e1pt2y - e1pt1y;
+
+    x2 = e2pt2x - e2pt1x;
+    y2 = e2pt2y - e2pt1y;
+  }else if( e1pt2x == e2pt2x &&  e1pt2y == e2pt2y ){
+    x1 = e1pt2x - e1pt1x;
+    y1 = e1pt2y - e1pt1y;
+
+    x2 = e2pt1x - e2pt2x;
+    y2 = e2pt1y - e2pt2y;
+  }
+  x1 = e1pt1x - e1pt2x;
+  y1 = e1pt1y - e1pt2y;
+
+  x2 = e2pt2x - e2pt1x;
+  y2 = e2pt2y - e2pt1y;
+  */
+  /*
+  D Pv1 = std::sqrt( (D) ( std::pow( vertex->x - pt1->x , 2 ) + std::pow( vertex->y - pt1->y, 2 ) ) );
+  D Pv2 = std::sqrt( (D) ( std::pow( vertex->x - pt2->x , 2 ) + std::pow( vertex->y - pt2->y, 2 ) ) );
+  D P12 = std::sqrt( (D) ( std::pow( pt1->x - pt2->x , 2 ) + std::pow( pt1->y - pt2->y, 2 ) ) );
+  return std::acos( ( std::pow( Pv1, 2 ) + std::pow( Pv2, 2 ) - std::pow( P12, 2 ) ) / ( 2.0 * Pv1 * Pv2 ) );
+  */
+  x1 = e1pt2x - e1pt1x;
+  y1 = e1pt2y - e1pt1y;
+
+  x2 = e2pt2x - e2pt1x;
+  y2 = e2pt2y - e2pt1y;
+  //P x2 = pt2->x - vertex->x;
+  //P y2 = pt2->y - vertex->y;
+  int dot = x1 * x2 + y1 * y2;
+  int det = x1 * y2 - y1 * x2;
+  float angle = std::abs( (float) std::atan2( (float) det, (float) dot ) );
+  info.GetReturnValue().Set( Nan::New( angle ) );
+
 }

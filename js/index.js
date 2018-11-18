@@ -102,12 +102,12 @@ var displayScale = 0.5,
 var setCanvas = ()=>{
   let cv  = document.body.appendChild( document.createElement( "canvas" ) );
   cv.id = "canvas";
-  cv.style.width = "500px";
-  cv.style.height = "500px";
+  cv.style.width = "1000px";
+  cv.style.height = "1000px";
   cv.style.margin = 0;
   cv.style.padding = 0;
-  cv.width = 500;
-  cv.height = 500;
+  cv.width = 1000;
+  cv.height = 1000;
   cv.style.backgroundColor = "#f0d5ba";
 }
 var agents = [];
@@ -249,7 +249,7 @@ document.body.addEventListener( "click", e => {
 */
 
 let polypts = [
-  [ [ 10, 10 ],  [ 90, 10 ], [ 90, 90 ],  [ 10, 90 ]   ],
+  [ [ 10, 10 ],  [ 90, 10 ], [ 90, 90 ], [ 70, 90 ],[ 70, 95 ], [ 90, 95 ],[ 90, 110], [ 70, 110 ], [ 50, 110 ], [ 50, 90 ],  [ 10, 90 ]   ],
   [ [ 20, 20 ], [ 30, 20 ], [ 30, 30 ], [ 20, 30 ] ],
   [ [ 50, 20 ], [ 60, 20 ], [ 60, 30 ], [ 50, 30 ] ],
   [ [ 20, 60 ], [ 30, 60 ], [ 30, 70 ], [ 20, 70 ] ],
@@ -274,21 +274,31 @@ drawTriangulation( triangulation, document.getElementById( "canvas" ), 3 );
 
 
 let triangulation = td.clip2triangulate( polypts );
-//console.log( "length : " + triangulation.length );
 console.log( JSON.stringify( triangulation ) );
-//drawTriangulation( triangulation, document.getElementById( "canvas" ), 2.5 );
-let SCALE = 4;
-//drawTriangles( triangulation, document.getElementById( "canvas" ), SCALE );
-//drawWidths( triangulation,[ { triIndex: ( Math.floor( Math.random() * triangulation.length ) ), edgeIndex: ( Math.floor( Math.random() * 3 ) ) } ], document.getElementById( "canvas" ), SCALE );
+let SCALE =8;
+drawTriangles( triangulation, document.getElementById( "canvas" ), SCALE );
+drawWidths( triangulation,[ { triIndex: ( Math.floor( Math.random() * triangulation.length ) ), edgeIndex: ( Math.floor( Math.random() * 3 ) ) } ], document.getElementById( "canvas" ), SCALE );
 
-//drawTriangulation( triangulation, document.getElementById( "canvas" ), 2.5 );
+
+/*
+ let  pt1 = [ 20, 20 ],
+      pt2 = [ 20, 40],
+      pt3 = [ 20, 20],
+      pt4 = [ 40, 30];
+
+let a = td.testAngle( pt1[ 0 ], pt1[ 1 ], pt2[ 0 ], pt2[ 1 ], pt3[ 0 ], pt3[ 1 ], pt4[ 0 ], pt4[ 1 ] )
+console.log( a + " / " + a / Math.PI*180 );
+drawAngle( pt1[ 0 ], pt1[ 1 ], pt2[ 0 ], pt2[ 1 ], pt3[ 0 ], pt3[ 1 ], pt4[ 0 ], pt4[ 1 ], document.getElementById( "canvas" ), 4.5 );
+*/
+
 
 console.log( "///////////////// ////// ////////// ///////:" );
+//console.log( JSON.stringify( td.getLevel3Paths() ) );
 //let clip = td.tryClipper( 3 );
-let clip = td.tryPoly2Tri();
-console.log( JSON.stringify( clip ) );
+//let clip = td.tryPoly2Tri();
+//console.log( JSON.stringify( clip ) );
  //drawClip( clip[ 0 ], document.getElementById( "canvas" ), SCALE )
- drawP2T( clip, document.getElementById( "canvas" ), SCALE )
+// drawP2T( clip, document.getElementById( "canvas" ), SCALE )
 
 function getTriCentroid(_coord){
   let coord = [ [_coord[ 0 ], _coord[ 1 ] ], [ _coord[ 2 ], _coord[ 3 ] ], [ _coord[ 4 ], _coord[ 5 ] ] ];
@@ -325,7 +335,7 @@ function drawTriangles( _triangulation, _cv, _scale ){
     ctx.stroke();
     let center = getTriCentroid( p );
     ctx.strokeStyle = "black"
-    ctx.strokeText( tri.id, center[ 0 ]*scale, center[ 1 ]*scale);
+    ctx.strokeText( tri.id +"-("+tri.level+")", center[ 0 ]*scale, center[ 1 ]*scale);
     let edgeC1x = p[ 0 ] * scale + ((p[ 2 ] * scale - p[ 0 ] * scale) / 2),
         edgeC1y = p[ 1 ] * scale + ((p[ 3 ] * scale - p[ 1 ] * scale) / 2),
         edgeC2x = p[ 2 ] * scale + ((p[ 4 ] * scale - p[ 2 ] * scale) / 2),
@@ -339,11 +349,13 @@ function drawTriangles( _triangulation, _cv, _scale ){
         to2y = (center[ 1 ]*scale) + ( edgeC2y - center[ 1 ]*scale ) * cToE,
         to3x = (center[ 0 ]*scale) + ( edgeC3x - center[ 0 ]*scale ) * cToE,
         to3y = (center[ 1 ]*scale) + ( edgeC3y - center[ 1 ]*scale ) * cToE,
-        a = tri.adjacents;
+        a = tri.nodes;
     ctx.strokeStyle = "red";
-//    if( a[ 0 ] > -1 ){ ctx.strokeText( a[ 0 ], to1x, to1y );  }
-//    if( a[ 1 ] > -1 ){ ctx.strokeText( a[ 1 ], to2x, to2y );  }
-//    if( a[ 2 ] > -1 ){ ctx.strokeText( a[ 2 ], to3x, to3y );  }
+
+    if( a[ 0 ] > -1 ){ ctx.strokeText( a[ 0 ], to1x, to1y );  }
+    if( a[ 1 ] > -1 ){ ctx.strokeText( a[ 1 ], to2x, to2y );  }
+    if( a[ 2 ] > -1 ){ ctx.strokeText( a[ 2 ], to3x, to3y );  }
+
     ctx.strokeStyle = "black";
   })
 }
@@ -369,6 +381,24 @@ function drawWidths( _triangulation, _indices, _cv, _scale ){
     ctx.fill();
 
   } )
+}
+
+function drawAngle( x1, y1, x2, y2, x3, y3, x4, y4, _cv, _scale ){
+  let ctx = _cv.getContext( "2d" ),
+      scale = _scale || 1;
+  ctx.beginPath();
+  ctx.moveTo( x1 * scale, y1 * scale );
+  ctx.lineTo( x2 * scale, y2 * scale );
+  ctx.moveTo( x3 * scale, y3 * scale );
+  ctx.lineTo( x4 * scale, y4 * scale );
+  ctx.stroke();
+  let angle = td.testAngle( x1, y1, x2, y2, x3, y3, x4, y4 );
+  ctx.beginPath();
+  ctx.moveTo( x2 * scale + 20, y2 * scale );
+  let angle0 = td.testAngle( x1, y1, x2, y2, x1, y1, x1 +10, y1  );
+  //ctx.moveTo( x2 * scale + 20, y2 * scale );
+  ctx.arc( x2 * scale, y2 * scale, 20, angle0 + Math.PI, angle + Math.PI);
+  ctx.stroke();
 }
 
 function drawTriPoints( _triangulation, _cv, _scale ){

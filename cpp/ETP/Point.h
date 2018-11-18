@@ -7,39 +7,39 @@
 
 namespace ETP {
 
-template <typename T>
+template <typename P, typename D>
 
 struct Point {
 
-  T x;
-  T y;
+  P x;
+  P y;
 
   Point(){}
 
-  Point( T _x, T _y ): x( _x ), y( _y ){
+  Point( P _x, P _y ): x( _x ), y( _y ){
 
   }
 
   ~Point(){}
 
-  void set( T _x, T _y ){
+  void set( P _x, P _y ){
     x = _x;
     y = _y;
   }
 
-  bool equals( const std::shared_ptr<Point<T>>& _Point ){
+  bool equals( const std::shared_ptr<Point<P,D>>& _Point ){
     if( x == _Point->x && y == _Point->y ){
       return true;
     }
     return false;
   }
-  bool equals( const Point<T>& _Point ){
+  bool equals( const Point<P,D>& _Point ){
     if( x == _Point.x && y == _Point.y ){
       return true;
     }
     return false;
   }
-  bool equals( const T& _x, const T& _y ){
+  bool equals( const P& _x, const P& _y ){
     if( x == _x && y == _y ){
       return true;
     }
