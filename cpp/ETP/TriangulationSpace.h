@@ -10,7 +10,7 @@
 #include <limits>
 #include <stdexcept>
 #include <string>
-
+#include <algorithm>
 
 #include <nan.h>
 
@@ -19,8 +19,9 @@
 
 #include "./Point.h"
 #include "./Edge.h"
+#include "./SearchNode.h"
 #include "./Triangle.h"
-#include "./Component.h"
+
 
 #include "../utilz.h"
 
@@ -39,87 +40,18 @@ class TriangulationSpace {
   std::vector<std::shared_ptr<ETP::Point<P,D>>> points;
   std::vector<std::shared_ptr<ETP::Edge<P,D>>> edges;
   std::vector<std::shared_ptr<ETP::Triangle<P,D>>> triangles;
-
+  P minX;
+  P minY;
+  P maxX;
+  P maxY;
+  P sectorWidth = 15;
+  P sectorHeight = 15;
+  std::vector<std::vector<std::vector<std::shared_ptr<ETP::Triangle<P,D>>>>> sectors;
+  //unsigned int searchIndex = 0;
 
 public:
 
   TriangulationSpace(){};
-/*
-  void buildSpace( std::vector<std::vector<ETP::Point<P,D>>> _polygon ){
-    std::vector<N> indices = mapbox::earcut<N>( _polygon );
-
-    for( size_t i = 0; i < _polygon.size(); i++ ){
-      std::vector<ETP::Point<P,D>> polyObj = _polygon[ i ];
-      size_t polyObjEnd = polyObj[ 0 ].equals( polyObj[ polyObj.size() - 1 ] ) ? polyObj.size() - 1 : polyObj.size();
-      //size_t polyObjEnd = polyObj.size();
-
-      for( size_t ii = 0; ii < polyObjEnd; ii++ ){
-        size_t iNext = (ii < (polyObjEnd - 1)) ?( ii + 1) : 0;
-          edges.push_back( std::move( std::make_shared<ETP::Edge<P,D>>( polyObj[ ii ], polyObj[ iNext ], true ) ) );
-      }
-
-    }
-
-//    for( size_t j = 0; j < _polygon.size(); j++ ){
-//      std::vector<ETP::Point<P,D>>& polyObj = _polygon[ j ];
-//      size_t polyObjEnd = polyObj[ 0 ].equals( polyObj[ (int) polyObj.size() - 1 ] ) ? (int) polyObj.size() - 1 : polyObj.size();
-//      for( size_t jj = 0; jj < polyObjEnd; jj++ ){
-//        points.push_back( std::make_shared<ETP::Point<P,D>>( polyObj[ jj ] ) );
-//      }
-//    }
-
-
-    for( size_t el = 0; el < edges.size(); el++ ){
-      bool point1IsNew = true;
-      bool point2IsNew = true;
-      for( size_t pi = 0; pi < points.size(); pi++ ){
-        std::shared_ptr<ETP::Point<P,D>>& testPoint = points[ pi ];
-        if( testPoint->equals( edges[ el ]->getPointRef( 0 ) ) ){
-          point1IsNew = false;
-        }
-        if( testPoint->equals( edges[ el ]->getPointRef( 1 ) ) ){
-          point2IsNew = false;
-        }
-      }
-      if( point1IsNew ){
-        points.push_back( edges[ el ]->getPointVal( 0 ) );
-      }
-      if( point2IsNew ){
-        points.push_back( edges[ el ]->getPointVal( 1 ) );
-      }
-    }
-    for( size_t n = 0; n < indices.size() / 3; n++ ){
-      std::shared_ptr<ETP::Point<P,D>>& pt1 = points[ indices[ n * 3 ] ];
-      std::shared_ptr<ETP::Point<P,D>>& pt2 = points[ indices[ n * 3 + 1 ] ];
-      std::shared_ptr<ETP::Point<P,D>>& pt3 = points[ indices[ n * 3 + 2 ] ];
-      bool newEdge1 = true;
-      bool newEdge2 = true;
-      bool newEdge3 = true;
-      for( size_t e = 0; e < edges.size(); e++ ){
-        if( edges[ e ]->hasSamePoints( points[ indices[ n * 3 ] ], points[ indices[ n * 3 + 1 ] ] ) ){
-          newEdge1 = false;
-        }
-        if( edges[ e ]->hasSamePoints( points[ indices[ n * 3 + 1 ] ], points[ indices[ n * 3 + 2 ] ] ) ){
-          newEdge2 = false;
-        }
-        if( edges[ e ]->hasSamePoints( points[ indices[ n * 3 + 2 ] ], points[ indices[ n * 3 ] ] ) ){
-          newEdge3 = false;
-        }
-      }
-      if( newEdge1 ){
-        edges.push_back( std::make_shared<Edge<P,D>>( points[ indices[ n * 3 ] ], points[ indices[ n * 3 + 1 ] ], false  ) );
-      }
-      if( newEdge2 ){
-        edges.push_back( std::make_shared<Edge<P,D>>( points[ indices[ n * 3 + 1 ] ], points[ indices[ n * 3 + 2 ] ], false  ) );
-      }
-      if( newEdge3 ){
-        edges.push_back( std::make_shared<Edge<P,D>>( points[ indices[ n * 3 + 2 ] ], points[ indices[ n * 3 ] ], false  ) );
-      }
-
-    }
-
-  }
-*/
 
   v8::Local<v8::Array> getTriangles(){
     size_t tl = triangles.size();
@@ -182,6 +114,13 @@ public:
       v8::Local<v8::String> anglesProp = Nan::New( "angles" ).ToLocalChecked();
       retTri->Set( anglesProp, anglesArr );
 
+      v8::Local<v8::Array> lowerBoundsArr = Nan::New<v8::Array>( 3 );
+      lowerBoundsArr->Set( 0, Nan::New( (NanFloat) tri->getLowerBound( 0 ) ) );
+      lowerBoundsArr->Set( 1, Nan::New( (NanFloat) tri->getLowerBound( 1 ) ) );
+      lowerBoundsArr->Set( 2, Nan::New( (NanFloat) tri->getLowerBound( 2 ) ) );
+      v8::Local<v8::String> lowerBoundsProp = Nan::New( "lowerBounds" ).ToLocalChecked();
+      retTri->Set( lowerBoundsProp, lowerBoundsArr );
+
       v8::Local<v8::String> lvlProp = Nan::New( "level" ).ToLocalChecked();
       v8::Local<v8::Value> lvlVal = Nan::New( tri->getLevel() );
       retTri->Set( lvlProp, lvlVal );
@@ -199,6 +138,15 @@ public:
         nodesArr->Set( 2, Nan::New( n3 != nullptr ? (int) n3->getId() : -1 ) );
       v8::Local<v8::String> nodesProp = Nan::New( "nodes" ).ToLocalChecked();
       retTri->Set( nodesProp, nodesArr );
+
+      v8::Local<v8::String> centroidProp = Nan::New( "centroid" ).ToLocalChecked();
+      v8::Local<v8::Object> centroidOb = Nan::New<v8::Object>();
+      v8::Local<v8::String> xProp = Nan::New( "x" ).ToLocalChecked();
+      v8::Local<v8::String> yProp = Nan::New( "y" ).ToLocalChecked();
+      ETP::Point<D,D> centroid = tri->getCentroid();
+      centroidOb->Set( xProp, Nan::New( centroid.x ) );
+      centroidOb->Set( yProp, Nan::New( centroid.y ) );
+      retTri->Set( centroidProp, centroidOb );
 
       ret->Set( ti, retTri );
     }
@@ -236,7 +184,74 @@ public:
     }
     return ret;
   }
+  v8::Local<v8::Object> getSectors(){
+    v8::Local<v8::Object> ret = Nan::New<v8::Object>();
+    v8::Local<v8::String> wProp = Nan::New( "width" ).ToLocalChecked();
+    v8::Local<v8::Value> wValue = Nan::New( (int) sectorWidth );
+    ret->Set( wProp, wValue );
+    v8::Local<v8::String> hProp = Nan::New( "height" ).ToLocalChecked();
+    v8::Local<v8::Value> hValue = Nan::New( (int) sectorHeight );
+    ret->Set( hProp, hValue );
 
+    v8::Local<v8::String> mxProp = Nan::New( "minX" ).ToLocalChecked();
+    v8::Local<v8::Value> mxValue = Nan::New( (int) minX );
+    ret->Set( mxProp, mxValue );
+    v8::Local<v8::String> myProp = Nan::New( "minY" ).ToLocalChecked();
+    v8::Local<v8::Value> myValue = Nan::New( (int) minY );
+    ret->Set( myProp, myValue );
+
+    v8::Local<v8::Array> sSectors = Nan::New<v8::Array>();
+    size_t sl = sectors.size();
+    for( size_t y = 0; y < sl; y ++ ){
+      std::vector<std::vector<std::shared_ptr<ETP::Triangle<P,D>>>> row = sectors[ y ];
+      v8::Local<v8::Array> sRow = Nan::New<v8::Array>();
+      size_t rl = row.size();
+      for( size_t x = 0; x < rl; x++ ){
+        std::vector<std::shared_ptr<ETP::Triangle<P,D>>> cell = row[ x ];
+        v8::Local<v8::Array> sCell = Nan::New<v8::Array>();
+        size_t cl = cell.size();
+        for( size_t j = 0; j < cl; j++ ){
+          sCell->Set( j, Nan::New( cell[ j ]->getId() ) );
+        }
+        sRow->Set( x, sCell );
+      }
+      sSectors->Set( y, sRow );
+    }
+    v8::Local<v8::String> sProp = Nan::New( "sectors" ).ToLocalChecked();
+    ret->Set( sProp, sSectors );
+    return ret;
+  }
+  v8::Local<v8::Object> getBounds(){
+    v8::Local<v8::Object> ret = Nan::New<v8::Object>();
+
+    v8::Local<v8::String> minProp = Nan::New( "min" ).ToLocalChecked();
+    v8::Local<v8::String> xProp = Nan::New( "x" ).ToLocalChecked();
+    v8::Local<v8::String> yProp = Nan::New( "y" ).ToLocalChecked();
+    v8::Local<v8::String> maxProp = Nan::New( "max" ).ToLocalChecked();
+
+    v8::Local<v8::Object> min = Nan::New<v8::Object>();
+    v8::Local<v8::Value> minxValue = Nan::New( (int) minX );
+    v8::Local<v8::Value> minyValue = Nan::New( (int) minY );
+    min->Set( xProp, minxValue );
+    min->Set( yProp, minyValue );
+    ret->Set( minProp, min );
+
+    v8::Local<v8::Object> max = Nan::New<v8::Object>();
+    v8::Local<v8::Value> maxxValue = Nan::New( (int) maxX );
+    v8::Local<v8::Value> maxyValue = Nan::New( (int) maxY );
+    max->Set( xProp, maxxValue );
+    max->Set( yProp, maxyValue );
+    ret->Set( maxProp, max );
+    return ret;
+  }
+  v8::Local<v8::Array> listTrianglesIds( std::vector<std::shared_ptr<ETP::Triangle<P,D>>> _triangles ){
+    size_t l = _triangles.size();
+    v8::Local<v8::Array> ret =  Nan::New<v8::Array>( l );
+    for( int i = 0; i < l; i++ ){
+      ret->Set( i, Nan::New( _triangles[ i ]->getId() ) );
+    }
+    return ret;
+  }
   template<class C>
   void buildFromPolyLines( std::vector<std::vector<C>> polygons ){
     //std::vector<C> boundingPolygon = std::vector<C>();
@@ -409,13 +424,16 @@ public:
       throw;
     }
 
+    assignSectors();
 
     //info.GetReturnValue().Set( self->space->getEdges() );
     //info.GetReturnValue().Set( self->space->getTriangles() );
 
   }
-
-
+  void setSectorsDimensions( P _width, P _height ){
+    sectorWidth = _width;
+    sectorHeight = _height;
+  }
   bool isNewEdge( const ETP::Point<P,D>& _pt1, const ETP::Point<P,D>& _pt2 ){
     for( size_t i = 0; i < edges.size(); i++ ){
       if( edges[ i ]->hasSamePoints( _pt1, _pt2 ) ){
@@ -456,6 +474,17 @@ public:
     }
   }
   void addPoint( std::shared_ptr<ETP::Point<P,D>> _pt ){
+    if( points.size() == 0 ){
+      minX = _pt->x;
+      minY = _pt->y;
+      maxX = _pt->x;
+      maxY = _pt->y;
+    }else{
+      minX = std::min( minX, _pt->x );
+      minY = std::min( minY, _pt->y );
+      maxX = std::max( maxX, _pt->x );
+      maxY = std::max( maxY, _pt->y );
+    }
     points.push_back( std::move( _pt ) );
   }
   void addEdge( std::shared_ptr<ETP::Edge<P,D>> _e ){
@@ -467,7 +496,7 @@ public:
         return points[ i ];
       }
     }
-    points.push_back( std::move( _pt ) );
+    addPoint( std::move( _pt ) );
     return points[ points.size() - 1 ];
   }
   std::shared_ptr<ETP::Point<P,D>> addGetPoint( const P& _x, const P& _y ){
@@ -476,7 +505,7 @@ public:
         return points[ i ];
       }
     }
-    points.push_back( std::move( std::make_shared<ETP::Point<P,D>>( _x, _y ) ) );
+    addPoint( std::move( std::make_shared<ETP::Point<P,D>>( _x, _y ) ) );
     return points[ points.size() - 1 ];
   }
   std::shared_ptr<ETP::Edge<P,D>> addGetEdge( const P& _p1x, const P& _p1y, const P& _p2x, const P& _p2y, const bool& _constrained ){
@@ -618,37 +647,8 @@ public:
     }
     return angle;
   }
-/*
   static D getAngle( std::shared_ptr<ETP::Edge<P,D>> _edge1, std::shared_ptr<ETP::Edge<P,D>> _edge2 ){
-    if( _edge1 == nullptr || _edge2 == nullptr ){ return 0.0f; }
-    std::shared_ptr<ETP::Point<P,D>> pt1;
-    std::shared_ptr<ETP::Point<P,D>> vertex;
-    std::shared_ptr<ETP::Point<P,D>> pt2;
-    if( _edge1->getPointVal( 0 )->equals( _edge2->getPointVal( 0 ) ) ){
-      vertex = _edge1->getPointVal( 0 );
-      pt1 = _edge1->getPointVal( 1 );
-      pt2 = _edge2->getPointVal( 1 );
-    }else if( _edge1->getPointVal( 0 )->equals( _edge2->getPointVal( 1 ) ) ){
-      vertex = _edge1->getPointVal( 0 );
-      pt1 = _edge1->getPointVal( 1 );
-      pt2 = _edge2->getPointVal( 0 );
-    }else if( _edge1->getPointVal( 1 )->equals( _edge2->getPointVal( 0 ) ) ){
-      vertex = _edge1->getPointVal( 1 );
-      pt1 = _edge1->getPointVal( 0 );
-      pt2 = _edge2->getPointVal( 1 );
-    }else if( _edge1->getPointVal( 1 )->equals( _edge2->getPointVal( 1 ) ) ){
-      vertex = _edge1->getPointVal( 1 );
-      pt1 = _edge1->getPointVal( 0 );
-      pt2 = _edge2->getPointVal( 0 );
-    }
-    D Pv1 = std::sqrt( (D) ( std::pow( vertex->x - pt1->x , 2 ) + std::pow( vertex->y - pt1->y, 2 ) ) );
-    D Pv2 = std::sqrt( (D) ( std::pow( vertex->x - pt2->x , 2 ) + std::pow( vertex->y - pt2->y, 2 ) ) );
-    D P12 = std::sqrt( (D) ( std::pow( pt1->x - pt2->x , 2 ) + std::pow( pt1->y - pt2->y, 2 ) ) );
-    return std::acos( ( std::pow( Pv1, 2 ) + std::pow( Pv2, 2 ) - std::pow( P12, 2 ) ) / ( 2.0 * Pv1 * Pv2 ) );
-  }
-  */
-  static D getAngle( std::shared_ptr<ETP::Edge<P,D>> _edge1, std::shared_ptr<ETP::Edge<P,D>> _edge2 ){
-    if( _edge1 == nullptr || _edge2 == nullptr || _edge1->hasSamePoints( _edge2 )){ return (D) 0.0f; }
+    if( _edge1 == nullptr || _edge2 == nullptr || _edge1->hasSamePoints( _edge2 ) ){ return (D) 0.0f; }
     std::shared_ptr<ETP::Point<P,D>> pt1;
     std::shared_ptr<ETP::Point<P,D>> vertex;
     std::shared_ptr<ETP::Point<P,D>> pt2;
@@ -684,8 +684,13 @@ public:
     return angle;
 
   }
-
-
+  /*
+  unsigned int getSearchIndex(){
+    searchIndex++;
+    if( searchIndex == 100 ){ searchIndex = 0; }
+    return searchIndex;
+  }
+  */
   static std::shared_ptr<ETP::Point<P,D>> vertexBetweenEdges( std::shared_ptr<ETP::Edge<P,D>> _edge1, std::shared_ptr<ETP::Edge<P,D>> _edge2 ){
     std::shared_ptr<ETP::Point<P,D>> e1pt1 = _edge1->getPointVal( 0 );
     if( e1pt1 == _edge2->getPointVal( 0 ) || e1pt1 == _edge2->getPointVal( 1 ) ){
@@ -745,7 +750,96 @@ public:
               && lineSegmentTouchesOrCrossesLine<C>( seg2Pt1, seg2Pt2, seg1Pt1, seg1Pt2 )
     );
   }
+  template<class C>
+  static bool doLinesIntersectOrTouch(  C seg1Pt1, C seg1Pt2, C seg2Pt1, C seg2Pt2  ) {
+    return (  doBoundingBoxesIntersect<C>( seg1Pt1, seg1Pt2, seg2Pt1, seg2Pt2 )
+              && lineSegmentTouchesOrCrossesLine<C>(seg1Pt1, seg1Pt2, seg2Pt1, seg2Pt2)
+              && lineSegmentTouchesOrCrossesLine<C>( seg2Pt1, seg2Pt2, seg1Pt1, seg1Pt2 )
+    );
+  }
+  void assignSectors(){
+    P width = maxX - minX;
+    P height = maxY - minY;
+    int nbX = (int) std::ceil( width / (P) sectorWidth );
+    int nbY = (int) std::ceil( height / (P) sectorHeight );
+    std::vector<std::vector<std::shared_ptr<ETP::Triangle<P,D>>>> row;
+    for( size_t c = 0; c <= nbX; c++ ){
+      std::vector<std::shared_ptr<ETP::Triangle<P,D>>> cell;
+      row.push_back( cell );
+    }
+    for( size_t r = 0; r <= nbY; r++ ){
+      sectors.push_back( row );
+    }
+    size_t nbTris = triangles.size();
+    for( size_t i = 0; i < nbTris; i++ ){
+      std::shared_ptr<ETP::Triangle<P,D>> t = triangles[ i ];
+      std::vector<ETP::Point<P,D>> bound = t->getBoundingBox();
+      P MinX = std::floor( ( bound[ 0 ].x - minX ) / (P) sectorWidth );
+      P MinY = std::floor( ( bound[ 0 ].y - minY ) / (P) sectorHeight );
+      P MaxX = std::floor( ( bound[ 1 ].x - minX ) / (P) sectorWidth );
+      P MaxY = std::floor( ( bound[ 1 ].y - minY ) / (P) sectorHeight );
+      std::vector<std::shared_ptr<ETP::Point<P,D>>> tPoints = t->getPoints();
+      ETP::Point<P,D> pt1 = *tPoints[ 0 ].get();
+      ETP::Point<P,D> pt2 = *tPoints[ 1 ].get();
+      ETP::Point<P,D> pt3 = *tPoints[ 2 ].get();
 
+      for( size_t y = MinY; y <= MaxY; y++ ){
+        for( size_t x = MinX; x <= MaxX; x++ ){
+          ETP::Point<P,D> gridPtMin = ETP::Point<P,D>( x * sectorWidth + minX,                  y * sectorHeight + minY );
+          ETP::Point<P,D> gridPtMaxX = ETP::Point<P,D>( x * sectorWidth + sectorWidth + minX,   y * sectorHeight + minY );
+          ETP::Point<P,D> gridPtMaxY = ETP::Point<P,D>( x * sectorWidth + minX,                 y * sectorHeight + sectorHeight + minY );
+          ETP::Point<P,D> gridPtMaxXY = ETP::Point<P,D>( x * sectorWidth + sectorWidth + minX,  y * sectorHeight + sectorHeight + minY );
+          if(     ( pt1.x >= gridPtMin.x && pt1.y >= gridPtMin.y && pt1.x <= gridPtMaxX.x && pt1.y <= gridPtMaxY.y )
+              ||  ( pt2.x >= gridPtMin.x && pt2.y >= gridPtMin.y && pt2.x <= gridPtMaxX.x && pt2.y <= gridPtMaxY.y )
+              ||  ( pt3.x >= gridPtMin.x && pt3.y >= gridPtMin.y && pt3.x <= gridPtMaxX.x && pt3.y <= gridPtMaxY.y )
+              ||  ( t->isPointInside( gridPtMin ) == true )
+              ||  ( t->isPointInside( gridPtMaxX ) == true )
+              ||  ( t->isPointInside( gridPtMaxY ) == true )
+              ||  ( t->isPointInside( gridPtMaxXY ) == true )
+
+              ||  doLinesIntersectOrTouch<ETP::Point<P,D>>(  pt1, pt2, gridPtMin, gridPtMaxX )
+              ||  doLinesIntersectOrTouch<ETP::Point<P,D>>(  pt1, pt2, gridPtMin, gridPtMaxY )
+              ||  doLinesIntersectOrTouch<ETP::Point<P,D>>(  pt1, pt2, gridPtMaxX, gridPtMaxXY )
+              ||  doLinesIntersectOrTouch<ETP::Point<P,D>>(  pt1, pt2, gridPtMaxY, gridPtMaxXY )
+
+              ||  doLinesIntersectOrTouch<ETP::Point<P,D>>(  pt2, pt3, gridPtMin, gridPtMaxX )
+              ||  doLinesIntersectOrTouch<ETP::Point<P,D>>(  pt2, pt3, gridPtMin, gridPtMaxY )
+              ||  doLinesIntersectOrTouch<ETP::Point<P,D>>(  pt2, pt3, gridPtMaxX, gridPtMaxXY )
+              ||  doLinesIntersectOrTouch<ETP::Point<P,D>>(  pt2, pt3, gridPtMaxY, gridPtMaxXY )
+
+              ||  doLinesIntersectOrTouch<ETP::Point<P,D>>(  pt3, pt1, gridPtMin, gridPtMaxX )
+              ||  doLinesIntersectOrTouch<ETP::Point<P,D>>(  pt3, pt1, gridPtMin, gridPtMaxY )
+              ||  doLinesIntersectOrTouch<ETP::Point<P,D>>(  pt3, pt1, gridPtMaxX, gridPtMaxXY )
+              ||  doLinesIntersectOrTouch<ETP::Point<P,D>>(  pt3, pt1, gridPtMaxY, gridPtMaxXY )
+          ){
+            sectors[ y ][ x ].push_back( t );
+          }
+        }
+      }
+    }
+  }
+  std::shared_ptr<ETP::Triangle<P,D>> getTriangleWithPoint( ETP::Point<P,D> _pt ){
+  //  if( triangles[ 0 ]->isPointInside( _pt ) ){ return triangles[ 0 ]; }
+  //  return nullptr;
+
+    P sectorY = std::floor( ( _pt.y - minY ) / sectorHeight );
+    if( sectorY >= (P) sectors.size() ){ return nullptr; }
+    P sectorX = std::floor( ( _pt.x - minX ) / sectorWidth );
+    if( sectorX >= (P) sectors[ sectorY ].size() ){ return nullptr; }
+    std::vector<std::shared_ptr<ETP::Triangle<P,D>>> sector = sectors[ sectorY ][ sectorX ];
+    size_t sl = sector.size();
+    for( size_t i = 0; i < sl; i++ ){
+      if( sector[ i ]->isPointInside( _pt ) ){ return sector[ i ]; }
+    }
+    return nullptr;
+  }
+  std::shared_ptr<ETP::Triangle<P,D>> searchPointInAllTriangles( ETP::Point<P,D> _pt ){
+    size_t tl = triangles.size();
+    for( size_t i = 0; i < tl; i++ ){
+      if( triangles[ i ]->isPointInside( _pt ) ){ return triangles[ i ]; }
+    }
+    return nullptr;
+  }
   void collapseUnrootedTree( std::shared_ptr<ETP::Triangle<P,D>> t, component c ){
     std::vector<std::shared_ptr<ETP::Triangle<P,D>>> s;
     s.push_back( t );
@@ -769,7 +863,6 @@ public:
       }
     }
   }
-
   void collapseRootedTree( std::shared_ptr<ETP::Triangle<P,D>> r, std::shared_ptr<ETP::Triangle<P,D>> t ){
     int c = r->getComponent();
     std::vector<std::shared_ptr<ETP::Triangle<P,D>>> s;
@@ -799,7 +892,7 @@ public:
             continue;
           }
           D currAngle = lastAngle + getAngle( edgeIn, e );
-          tCurrent->setLowerBound( i, currAngle );
+          tCurrentNeighbour->setLowerBound( tCurrentNeighbour->getAdjacentIndex( tCurrent ), currAngle );
           D currChoke = std::min( lastChoke, calculateWidth( tCurrent, edgeIn, e ) );
           tCurrent->setChoke( i, currChoke );
           s.push_back( tCurrentNeighbour );
@@ -809,7 +902,6 @@ public:
       }
     }
   }
-
   std::vector<std::shared_ptr<ETP::Triangle<P,D>>> abstractLevel0and1( component& c ){
     std::vector<std::shared_ptr<ETP::Triangle<P,D>>> q;
     std::vector<std::shared_ptr<ETP::Triangle<P,D>>> r;
@@ -868,7 +960,6 @@ public:
     }
     return r;
   }
-
   void abstractLevel2(){
     int c = 1;
     std::vector<std::shared_ptr<ETP::Triangle<P,D>>> q;
@@ -905,6 +996,7 @@ public:
               }
               tCurrent->setAngle( i, std::numeric_limits<D>::infinity() );
               tCurrent->setChoke( i, std::numeric_limits<D>::infinity() );
+              //tCurrent->setLowerBound( i, 55.0 );
               tCurrent->setAdjacent( i, nullptr );
             }
           }
@@ -913,24 +1005,21 @@ public:
       }
     }
   }
-
   void abstractLevel3( std::shared_ptr<ETP::Triangle<P,D>> _t, int c ){
     std::vector<std::shared_ptr<ETP::Triangle<P,D>>> q = std::vector<std::shared_ptr<ETP::Triangle<P,D>>>();
     q.push_back( _t );
-    int ct = 0;
     while( q.empty() == false ){
-      ct++;
       std::shared_ptr<ETP::Triangle<P,D>> t = q.front();
-      q.erase( q.begin(), q.begin() + 1 );
+      q.erase( q.begin() );
       t->setLevel( 3 );
       t->setComponent( c );
       for( size_t j = 0; j < 3; j++ ){
-        int previousTid = t->getId();
+        //int previousTid = t->getId();
         std::shared_ptr<ETP::Triangle<P,D>> t1stNeighbour = t->getAdjacentVal( j );
         D chokeCount = t->getEdgeVal( j )->getLength();
         D lowerBoundCount = 0.0f;
         D memChoke = 0.0f;
-        D memLowerBound = 0.0f;
+        //D memLowerBound = 0.0f;
         if( t1stNeighbour->getNumConstrainedEdges() + t1stNeighbour->getNumAdjacentLevel( 1 ) == 0 ){
           if( t1stNeighbour->getLevel() == -1 ){
             q.push_back( t1stNeighbour );
@@ -940,17 +1029,18 @@ public:
         }else{
           t1stNeighbour->setLevel( 2 );
           t1stNeighbour->setComponent( c );
-          t1stNeighbour->setConnectedNode( t1stNeighbour->getAdjacentIndex( t ), t );
+          int indexToPrevious = t1stNeighbour->getAdjacentIndex( t );
+          t1stNeighbour->setConnectedNode( indexToPrevious, t );
         }
         std::shared_ptr<ETP::Triangle<P,D>> tCurrent = t1stNeighbour;
-        std::shared_ptr<ETP::Edge<P,D>> edgeIn = tCurrent->getEdgeVal( j );
+        std::shared_ptr<ETP::Edge<P,D>> edgeIn = t->getEdgeVal( j );
         bool reachedLvl3 = false;
         while( reachedLvl3 == false ){
           for( size_t k = 0; k < 3; k++ ){
             std::shared_ptr<ETP::Edge<P,D>> edgeOut = tCurrent->getEdgeVal( k );
-            if( edgeOut->isConstrained() == true ){ continue; }
+            if( edgeOut->isConstrained() == true || edgeOut == edgeIn ){ continue; }
             std::shared_ptr<ETP::Triangle<P,D>> tCurrentNeighbour = tCurrent->getAdjacentVal( k );
-            if( tCurrentNeighbour->getId() == previousTid ){ continue; }
+            //if( tCurrentNeighbour->getId() == previousTid ){ continue; }
             if( tCurrentNeighbour->getLevel() == 1 ){
               try{
                 collapseRootedTree( tCurrent, tCurrentNeighbour );
@@ -961,24 +1051,29 @@ public:
             }else{
               int neighbN = tCurrentNeighbour->getNumConstrainedEdges();
               int neighbM = tCurrentNeighbour->getNumAdjacentLevel( 1 );
+            //  memLowerBound = getAngle( edgeIn, edgeOut );
+
+              tCurrentNeighbour->setComponent( c );
+              tCurrentNeighbour->setConnectedNode( tCurrentNeighbour->getAdjacentIndex( tCurrent ), t );
+              memChoke = tCurrent->getWidthbetweenEdges( edgeIn, edgeOut );
+              lowerBoundCount += getAngle( edgeIn, edgeOut );
+              tCurrentNeighbour->setLowerBound( tCurrentNeighbour->getEdgeIndex( edgeOut ), lowerBoundCount );
+
               if( neighbN + neighbM == 0 ){
                 if( tCurrentNeighbour->getLevel() == -1 ){
                   q.push_back( tCurrentNeighbour );
                 }
                 tCurrentNeighbour->setConnectedNode( tCurrentNeighbour->getAdjacentIndex( tCurrent ), t );
+                //tCurrentNeighbour->setLowerBound( tCurrentNeighbour->getEdgeIndex( edgeOut ), lowerBoundCount + memLowerBound );
                 reachedLvl3 = true;
                 break;
               }
+              //previousTid = tCurrent->getId();
               tCurrentNeighbour->setLevel( 2 );
-              tCurrentNeighbour->setComponent( c );
-              tCurrentNeighbour->setConnectedNode( tCurrentNeighbour->getAdjacentIndex( tCurrent ), t );
-              memChoke = tCurrent->getWidthbetweenEdges( edgeIn, edgeOut );
-              memLowerBound = getAngle( edgeIn, edgeOut );
-              previousTid = tCurrent->getId();
               tCurrent = tCurrentNeighbour;
               edgeIn = edgeOut;
               chokeCount = std::min( chokeCount, memChoke );
-              lowerBoundCount += memLowerBound;
+
             }
           }
         }
@@ -986,7 +1081,347 @@ public:
     }
   }
 
+  std::vector<std::shared_ptr<ETP::Triangle<P,D>>> abstractTriangulationSearch( std::shared_ptr<ETP::Triangle<P,D>> _startTri, std::shared_ptr<ETP::Triangle<P,D>> _goalTri ){
+    std::vector<std::shared_ptr<ETP::Triangle<P,D>>> ret;
+    if( _startTri == nullptr || _goalTri == nullptr ){ return ret; }
+    int sComp = _startTri->getComponent();
+    int gComp = _goalTri->getComponent();
+    if( sComp != gComp ){ return ret; }
+    // on same triangle or within lvl 0 node
+    if( _startTri == _goalTri ){
+      ret.push_back( _startTri );
+      return ret;
+    }
+    int sLvl = _startTri->getLevel();
+    int gLvl = _goalTri->getLevel();
 
+    //start and goal are connected lvl 1 and lvl 2 nodes
+    if(  sLvl == 1 && gLvl == 2 ){ // start is lvl 1 and goal is lvl 2
+      int connectedNodeIndex = _startTri->getConnectedNodeIndex( _goalTri );
+      if( connectedNodeIndex > -1 ){
+        return getTrianglesFromLvl1ToConnectedLvl2( _startTri, connectedNodeIndex );
+      }
+    }else if( sLvl == 2 && gLvl == 1 ){ // start is lvl 2 and goal is lvl 1
+      int connectedNodeIndex = _goalTri->getConnectedNodeIndex( _startTri );
+      if( connectedNodeIndex > -1 ){
+        ret = getTrianglesFromLvl1ToConnectedLvl2( _goalTri, connectedNodeIndex );
+        std::reverse( ret.begin(), ret.end() );
+        return ret;
+      }
+    }
+    //start and goal are inside the same lvl 1 tree
+    if( sLvl == 1 && gLvl == 1 ){
+      std::shared_ptr<ETP::Triangle<P,D>> startRoot = _startTri->getLvl1RootNode();
+      if(    ( startRoot == nullptr ) //start and goal belong to the same unrooted tree
+          || ( startRoot == _goalTri->getLvl1RootNode() ) // start and goal belong to the same rooted tree
+      ){
+        return searchLvl1Tree( _startTri, _goalTri );
+      }
+    }
+    // start and goal belong either to the same level 2 loop or ring or to connected lvl 1 trees connected to it
+    // includes also the case where start and goal belong to a level 2 corridor or to attached lvl 1 trees
+    if( sLvl == 2 || ( sLvl == 1 && _startTri->getLvl1RootNode() != nullptr ) ){
+      std::shared_ptr<ETP::Triangle<P,D>> startRoot = sLvl == 2 ? _startTri : _startTri->getLvl1RootNode();
+      if( gLvl == 2 || ( gLvl == 1 && _goalTri->getLvl1RootNode() != nullptr ) ){
+        std::shared_ptr<ETP::Triangle<P,D>> goalRoot = gLvl == 2 ? _goalTri : _goalTri->getLvl1RootNode();
+        bool proceed = false;
+        std::vector<std::shared_ptr<ETP::Triangle<P,D>>> bodySearch;
+        if( startRoot->isPartoflvl2Ring() || startRoot->isOnSameLvl2Loop( goalRoot ) ){// inside a loop or ring
+          proceed = true;
+          bodySearch =  searchInsideLvl2RingOrLoop( _startTri, _goalTri );
+        }else if( startRoot->haveSameLvl2CorridorEndpoints( goalRoot )){// inside a corridor
+          bodySearch = searchInsideLvl2Corridor( _startTri, _goalTri );
+          if( bodySearch.empty() == false ){
+            proceed = true;
+          }
+        }
+        if( proceed == true ){
+          if( _startTri != startRoot ){ // we start from a lvl 1 tree and addtriangles up to the lvl2 root
+            std::vector<std::shared_ptr<ETP::Triangle<P,D>>> startPart = getTrianglesFromLvl1ToConnectedLvl2( _startTri, _startTri->getConnectedNodeIndex( startRoot ) );
+            ret.insert(
+              ret.end(),
+              std::make_move_iterator( startPart.begin() ),
+              std::make_move_iterator( startPart.end() )
+           );
+          }
+          ret.insert(
+            ret.end(),
+            std::make_move_iterator( bodySearch.begin() ),
+            std::make_move_iterator( bodySearch.end() )
+          );
+          if( _goalTri != goalRoot ){// goal is on a lvl 1 tree, we add triangles from the lvl 2 root to the goal
+            std::vector<std::shared_ptr<ETP::Triangle<P,D>>> goalPart = getTrianglesFromLvl1ToConnectedLvl2( _goalTri, _goalTri->getConnectedNodeIndex( goalRoot ) );
+            ret.insert(
+              ret.end(),
+              std::make_move_iterator( goalPart.crend() ),
+              std::make_move_iterator( goalPart.crbegin() )
+           );
+          }
+          return ret;
+        }
+
+      }
+    }
+    // perform classic Triangulation Reduction A*
+
+    //tmp
+    return std::vector<std::shared_ptr<ETP::Triangle<P,D>>>();
+
+  }
+
+
+  std::string  abstractTriangulationSearchString( std::shared_ptr<ETP::Triangle<P,D>> _startTri, std::shared_ptr<ETP::Triangle<P,D>> _goalTri ){
+      std::vector<std::shared_ptr<ETP::Triangle<P,D>>> ret;
+      if( _startTri == nullptr || _goalTri == nullptr ){
+        //return ret;
+        return std::string( "start or goal triangle is null" );
+      }
+      int sComp = _startTri->getComponent();
+      int gComp = _goalTri->getComponent();
+      if( sComp != gComp ){
+        //return ret;
+        return std::string( "on different Components" );
+      }
+      // on same triangle or within lvl 0 node
+      if( _startTri == _goalTri ){
+        //ret.push_back( _startTri );
+        return std::string( "on same triangle or within lvl 0 node" );
+      }
+      int sLvl = _startTri->getLevel();
+      int gLvl = _goalTri->getLevel();
+
+      //start and goal are connected lvl 1 and lvl 2 nodes
+      if( sLvl == 1 && gLvl == 2 ){ // start is lvl 1 and goal is lvl 2
+        int connectedNodeIndex = _startTri->getConnectedNodeIndex( _goalTri );
+        if( connectedNodeIndex > -1 ){
+          //return _startTri->getTrianglesToConnectedNode( connectedNodeIdx );
+          return std::string( "start and goal are connected lvl 1 and lvl 2 nodes - start is lvl 1 and goal is lvl 2" );
+        }
+      }else if( sLvl == 2 && gLvl == 1 ){ // start is lvl 2 and goal is lvl 1
+        int connectedNodeIndex = _goalTri->getConnectedNodeIndex( _startTri );
+        if( connectedNodeIndex > -1 ){
+          //ret = _goalTri->getTrianglesToConnectedNode( connectedNodeIdx );
+          //std::reverse(std::begin( ret ), std::end( ret ) );
+          //return ret;
+          return std::string( "start and goal are connected lvl 1 and lvl 2 nodes - start is lvl 2 and goal is lvl 1" );
+        }
+      }
+      //start and goal are inside the same lvl 1 tree
+      if( sLvl == 1 && gLvl == 1 ){
+        std::shared_ptr<ETP::Triangle<P,D>> startRoot = _startTri->getLvl1RootNode();
+        if(    ( startRoot == nullptr ) //start and goal belong to the same unrooted tree
+            || ( startRoot == _goalTri->getLvl1RootNode() ) // start and goal belong to the same rooted tree
+        ){
+          return std::string( "start and goal are inside the same lvl 1 tree" );
+        }
+      }
+      // start and goal belong either to the same level 2 loop or ring or to connected lvl 1 trees connected to it
+      // includes also the case where start and goal belong to a level 2 corridor or to attached lvl 1 trees
+      if( sLvl == 2 || ( sLvl == 1 && _startTri->getLvl1RootNode() != nullptr ) ){
+        std::shared_ptr<ETP::Triangle<P,D>> startRoot = sLvl == 2 ? _startTri : _startTri->getLvl1RootNode();
+        if( gLvl == 2 || ( gLvl == 1 && _goalTri->getLvl1RootNode() != nullptr ) ){
+          std::shared_ptr<ETP::Triangle<P,D>> goalRoot = gLvl == 2 ? _goalTri : _goalTri->getLvl1RootNode();
+          if( startRoot->isPartoflvl2Ring() || startRoot->isOnSameLvl2Loop( goalRoot ) ){// inside a loop or ring
+            if( sLvl == 1 ){ // add triangles between start Lvl1 triangle and its lvl2 root
+
+            }
+            if( gLvl == 1 ){// add triangles between goal Lvl1 triangle and its lvl2 root
+
+            }
+            // add triangles between the two connected lvl 2 triangles
+            return std::string( "start and goal belong either to the same level 2 loop or ring or to connected lvl 1 trees connected to it" );
+          }else if( startRoot->isOnSameLvl2Corridor( goalRoot )){// inside a corridor
+            return std::string( "start and goal belong to the same level 2 inside a corridor or to lvl 1 trees connected to it" );
+          }
+        }
+      }
+      // perform classic Triangulation Reduction A*
+      return std::string( "start and goal match to no special case and a class TRA* is needed" );
+    }
+
+  std::vector<std::shared_ptr<ETP::Triangle<P,D>>> getTrianglesFromLvl1ToConnectedLvl2( std::shared_ptr<ETP::Triangle<P,D>> _startTri, int connectedNodeIdx ){
+      std::vector<std::shared_ptr<ETP::Triangle<P,D>>> ret;
+      std::shared_ptr<ETP::Triangle<P,D>> goal = _startTri->getConnectedNode( connectedNodeIdx );
+      if( goal == nullptr ){ throw std::invalid_argument( "Triangle::getTrianglesToConnectedNode: search to null goal" ); }
+      std::shared_ptr<ETP::Triangle<P,D>> tCurrent = _startTri;
+      bool endReached = false;
+      while( endReached == false ){
+        ret.push_back( tCurrent );
+        if( tCurrent == goal ){
+          endReached = true;
+          break;
+        }
+        int nextIndex = tCurrent->getConnectedNodeIndex( goal );
+        tCurrent = tCurrent->getAdjacentVal( nextIndex );
+      }
+      return ret;
+    }
+
+  std::vector<std::shared_ptr<ETP::Triangle<P,D>>> searchLvl1Tree( std::shared_ptr<ETP::Triangle<P,D>> _startTri, std::shared_ptr<ETP::Triangle<P,D>> _goalTri ){
+    std::vector<std::shared_ptr<ETP::Triangle<P,D>>> openList;
+    std::vector<std::shared_ptr<ETP::SearchNode<P,D>>> usedList;
+    ETP::Point<D,D> goalCentroid = _goalTri->getCentroid();
+    _startTri->setSearchNode( ETP::SearchNode<P,D>( 0.0, 0.0 ), usedList );
+    openList.push_back( _startTri );
+    bool goalReached = false;
+    while( openList.empty() == false && goalReached == false ){
+      std::shared_ptr<ETP::Triangle<P,D>> tCurrent = openList.front();
+      openList.erase( openList.begin() );
+      ETP::SearchNode<P,D> snCurrent = *tCurrent->getSearchNode().get();
+      ETP::Point<D,D> currentCentroid = tCurrent->getCentroid();
+      for( int i = 0; i < 3; i++ ){
+        std::shared_ptr<ETP::Triangle<P,D>> tNeighbour = tCurrent->getAdjacentVal( i );
+        if( tNeighbour == nullptr || tNeighbour->getLevel() != 1 ){ continue; }
+        ETP::Point<D,D> tNeighbCentroid = tNeighbour->getCentroid();
+        if( tNeighbour == _goalTri ){
+          tNeighbour->setSearchNode( ETP::SearchNode<P,D>( 0.0, snCurrent.gValue + currentCentroid.dist( tNeighbCentroid ), tCurrent ), usedList );
+          goalReached = true;
+          break;
+        }
+        std::shared_ptr<ETP::SearchNode<P,D>> snNeighbourPtr = tNeighbour->getSearchNode();
+        bool neighbIsNew = false;
+        if( snNeighbourPtr == nullptr ){
+          D tnHVal = tNeighbCentroid.dist( goalCentroid );
+          tNeighbour->setSearchNode( ETP::SearchNode<P,D>( tnHVal, snCurrent.gValue + currentCentroid.dist( tNeighbCentroid ), tCurrent ), usedList );
+          insertInOpenList( tnHVal, tNeighbour, openList );
+        }
+      }
+    }
+    if( goalReached == false ){
+      resetUsedList( std::move( usedList ) );
+      return std::vector<std::shared_ptr<ETP::Triangle<P,D>>>();
+    }else{
+      return getFunnel( _goalTri, std::move( usedList ) );
+    }
+  }
+
+  std::vector<std::shared_ptr<ETP::Triangle<P,D>>> searchInsideLvl2RingOrLoop( std::shared_ptr<ETP::Triangle<P,D>> _startTri, std::shared_ptr<ETP::Triangle<P,D>> _goalTri ){
+    std::vector<std::shared_ptr<ETP::Triangle<P,D>>> openList;
+    std::vector<std::shared_ptr<ETP::SearchNode<P,D>>> usedList;
+    ETP::Point<D,D> goalCentroid = _goalTri->getCentroid();
+    _startTri->setSearchNode( ETP::SearchNode<P,D>( 0.0, 0.0 ), usedList );
+    openList.push_back( _startTri );
+    bool goalReached = false;
+    D memGValue;
+    while( openList.empty() == false ){
+      std::shared_ptr<ETP::Triangle<P,D>> tCurrent = openList.front();
+      openList.erase( openList.begin() );
+      ETP::SearchNode<P,D> snCurrent = *tCurrent->getSearchNode().get();
+      ETP::Point<D,D> currentCentroid = tCurrent->getCentroid();
+      int currentLvl = tCurrent->getLevel();
+      for( int i = 0; i < 3; i++ ){
+        if( currentLvl == 3 && tCurrent->getConnectedNode( i ) != tCurrent ){ continue; }
+        std::shared_ptr<ETP::Triangle<P,D>> tNeighbour = tCurrent->getAdjacentVal( i );
+        int neighbLvl = tNeighbour->getLevel();
+        if( tNeighbour == nullptr || neighbLvl < 2 || tNeighbour->getSearchNode() != nullptr ){ continue; }
+        //ETP::Point<D,D> tNeighbCentroid = tNeighbour->getCentroid();
+        ETP::Point<D,D> tNeighbCentroid = tNeighbour->getCentroid();
+        D neighbGValue = snCurrent.gValue + currentCentroid.dist( tNeighbCentroid );
+        if( goalReached == true && neighbGValue >= memGValue ){
+          return getFunnel( _goalTri, std::move( usedList ) );
+        }else if( tNeighbour == _goalTri ){
+          if( goalReached == false || neighbGValue < memGValue ){
+            memGValue = neighbGValue;
+            tNeighbour->setSearchNode( ETP::SearchNode<P,D>( 0.0, memGValue, tCurrent ), usedList );
+            if( goalReached == true ){
+              return getFunnel( _goalTri, std::move( usedList ) );
+            }
+            goalReached = true;
+          }
+        }else{
+          D neighbHValue = tNeighbCentroid.dist( goalCentroid );
+          tNeighbour->setSearchNode( ETP::SearchNode<P,D>( neighbHValue, neighbGValue, tCurrent ), usedList );
+          insertInOpenList( neighbHValue, tNeighbour, openList );
+        }
+      }
+    }
+  }
+
+  std::vector<std::shared_ptr<ETP::Triangle<P,D>>> searchInsideLvl2Corridor( std::shared_ptr<ETP::Triangle<P,D>> _startTri, std::shared_ptr<ETP::Triangle<P,D>> _goalTri ){
+    std::shared_ptr<ETP::Triangle<P,D>> endPoint = nullptr;
+    D sDist;
+    int sEndPointIdx;
+    for( int i = 0; i < 3; i++ ){
+      std::shared_ptr<ETP::Triangle<P,D>> cn = _startTri->getConnectedNode( i );
+      if( cn != nullptr ){
+        endPoint = cn;
+        sDist = _startTri->getLowerBound( i );
+        sEndPointIdx = i;
+        break;
+      }
+    }
+    int gEndPointIdx = _goalTri->getConnectedNodeIndex( endPoint );
+    D gDist = _goalTri->getLowerBound( gEndPointIdx );
+    std::shared_ptr<ETP::Triangle<P,D>> searchStart;
+    std::shared_ptr<ETP::Triangle<P,D>> searchGoal;
+    bool reverse;
+    if( sDist >= gDist ){
+      searchStart = _startTri;
+      searchGoal = _goalTri;
+      reverse = false;
+    }else{
+      searchStart = _goalTri;
+      searchGoal = _startTri;
+      reverse = true;
+    }
+    bool endReached = false;
+    std::vector<std::shared_ptr<ETP::Triangle<P,D>>> openList;
+    openList.push_back( searchStart );
+    while( endReached == false ){
+      std::shared_ptr<ETP::Triangle<P,D>> tCurrent = openList.front();
+      std::shared_ptr<ETP::Triangle<P,D>> tNeighbour = tCurrent->getAdjacentVal( tCurrent->getConnectedNodeIndex( endPoint ) );
+      if( tNeighbour == searchGoal ){
+        openList.insert( openList.begin(), tNeighbour );
+        endReached = true;
+        break;
+      }else if( tNeighbour->getLevel() == 3 ){
+        break;
+      }else{
+        openList.insert( openList.begin(), tNeighbour );
+      }
+    }
+    if( endReached == false ){
+      return std::vector<std::shared_ptr<ETP::Triangle<P,D>>>();
+    }else{
+      if( reverse == true ){
+        std::reverse( openList.begin(), openList.end( ) );
+      }
+      return openList;
+    }
+  }
+
+  std::vector<std::shared_ptr<ETP::Triangle<P,D>>> getFunnel( std::shared_ptr<ETP::Triangle<P,D>> _goalTri, std::vector<std::shared_ptr<ETP::SearchNode<P,D>>> _usedList ){
+    std::vector<std::shared_ptr<ETP::Triangle<P,D>>> ret;
+    ret.push_back( _goalTri );
+    bool startReached = false;
+    while( startReached == false ){
+      std::shared_ptr<ETP::Triangle<P,D>> tCurrent = ret.front();
+      std::shared_ptr<ETP::Triangle<P,D>> tComeFrom = tCurrent->getSearchNode()->comeFrom;
+      if( tComeFrom == nullptr ){
+        startReached = true;
+        break;
+      }
+      ret.insert( ret.begin(), tComeFrom );
+    }
+    resetUsedList( std::move( _usedList ) );
+    return ret;
+  }
+  void insertInOpenList( D _hVal, std::shared_ptr<ETP::Triangle<P,D>> _tri, std::vector<std::shared_ptr<ETP::Triangle<P,D>>>& _openList ){
+    size_t ol = _openList.size();
+    for( size_t i = 0; i < ol; i++ ){
+      if( _hVal < _openList[ i ]->getSearchNode()->hValue ){
+        _openList.insert( _openList.begin() + i, _tri );
+        return void();
+      }
+    }
+    _openList.push_back( _tri );
+  }
+  void resetUsedList( std::vector<std::shared_ptr<ETP::SearchNode<P,D>>> _usedList ){
+    size_t l = _usedList.size();
+    for( size_t i = 0; i < l; i++ ){
+      _usedList[ i ] = nullptr;
+    }
+  }
 };// end of class
 }// end of namespace
 

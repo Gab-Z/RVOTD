@@ -19,7 +19,10 @@
 #include "./ETP/Triangle.h"
 #include "./ETP/TriangulationSpace.h"
 
+
 #include "./utilz.h"
+
+
 
 typedef signed long long tPos;
 typedef float tDecim;
@@ -59,6 +62,10 @@ class TowerDefense  : public Nan::ObjectWrap {
 
 
     static NAN_METHOD( testAngle );
+    static NAN_METHOD( getTriangleId );
+    static NAN_METHOD( getSectors );
+
+    static NAN_METHOD( testTRAStar );
 
     void init();
 

@@ -122,8 +122,10 @@ public:
     return std::sqrt( (D) ( std::pow( point2->x - point1->x, 2 ) + std::pow( point2->y - point1->y, 2 ) ) );
   }
 
-
-
+  template <typename T>
+  ETP::Point<T,D> toVec(){
+    return ETP::Point<T,D>( (T)( point2->x - point1->x ), (T)( point2->y - point1->y ) );
+  }
 
 
 };

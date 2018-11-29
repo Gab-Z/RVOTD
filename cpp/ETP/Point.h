@@ -4,6 +4,7 @@
 #include <iostream>
 #include <memory>
 #include <nan.h>
+#include <cmath>
 
 namespace ETP {
 
@@ -55,6 +56,21 @@ struct Point {
     v8::Local<v8::Value> yValue = Nan::New( y );
     ret->Set( yProp, yValue );
     return ret;
+  }
+
+  Point perp(){
+    P magnitude = std::sqrt( x * x + y * y );
+    return Point( -y / magnitude, x / magnitude );
+  }
+
+  D dot( Point& other ){
+    return (D)( x * other.x + y * other.y );
+  }
+
+  D dist( Point& other ){
+    D dx = (D) other.x - (D) x;
+    D dy = (D) other.y - (D) y;
+    return std::sqrt( dx * dx + dy * dy  );
   }
 
 

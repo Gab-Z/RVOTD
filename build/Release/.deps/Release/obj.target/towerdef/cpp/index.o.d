@@ -46,8 +46,8 @@ Release/obj.target/towerdef/cpp/index.o: ../cpp/index.cpp \
  ../cpp/././RVO2/RVOSimulator.h ../cpp/././RVO2/Vector2.h \
  ../cpp/././RVO2/Vector2.h ../cpp/././ETP/Point.h ../cpp/././ETP/Edge.h \
  ../cpp/././ETP/./Point.h ../cpp/././ETP/Triangle.h \
- ../cpp/././ETP/./Edge.h ../cpp/././ETP/./Component.h \
- ../cpp/././ETP/TriangulationSpace.h \
+ ../cpp/././ETP/./Edge.h ../cpp/././ETP/./SearchNode.h \
+ ../cpp/././ETP/././Triangle.h ../cpp/././ETP/TriangulationSpace.h \
  ../cpp/././ETP/../clipper/clipper.hpp \
  ../cpp/././ETP/../poly2tri/poly2tri.h ../cpp/././ETP/./Triangle.h \
  ../cpp/././ETP/../utilz.h ../cpp/././utilz.h
@@ -107,7 +107,8 @@ Release/obj.target/towerdef/cpp/index.o: ../cpp/index.cpp \
 ../cpp/././ETP/./Point.h:
 ../cpp/././ETP/Triangle.h:
 ../cpp/././ETP/./Edge.h:
-../cpp/././ETP/./Component.h:
+../cpp/././ETP/./SearchNode.h:
+../cpp/././ETP/././Triangle.h:
 ../cpp/././ETP/TriangulationSpace.h:
 ../cpp/././ETP/../clipper/clipper.hpp:
 ../cpp/././ETP/../poly2tri/poly2tri.h:

@@ -2,13 +2,15 @@
 #define DEF_ETP_Triangle
 
 #include "./Edge.h"
-#include "./Component.h"
+#include "./Point.h"
+#include "./SearchNode.h"
 #include <vector>
 #include <memory>
 
 namespace ETP {
 
-
+template <typename sP = int, typename sD = float>
+class SearchNode;
 
 template <typename P, typename D>
 
@@ -26,25 +28,31 @@ class Triangle {
   D lowerBoundDistances[ 3 ]  = { (D) 0.0f, (D) 0.0f, (D) 0.0f };
   D angles[ 3 ]  = { (D) 0.0f, (D) 0.0f, (D) 0.0f };
   unsigned int id ;
+  ETP::Point<D,D> centroid;
+  std::shared_ptr<ETP::SearchNode<P,D>> searchNode = nullptr;
 
 public:
   Triangle(){};
   Triangle( std::shared_ptr<ETP::Edge<P,D>> _edge1, std::shared_ptr<ETP::Edge<P,D>> _edge2, std::shared_ptr<ETP::Edge<P,D>> _edge3 ){
-    orderEdges( _edge1, _edge2, _edge3 );
+    init( std::move( _edge1 ), std::move( _edge2 ), std::move( _edge3 ) );
   };
   Triangle( std::shared_ptr<ETP::Edge<P,D>> _edge1, std::shared_ptr<ETP::Edge<P,D>> _edge2, std::shared_ptr<ETP::Edge<P,D>> _edge3, unsigned int _id ): id( _id ){
-    orderEdges( _edge1, _edge2, _edge3 );
+    init( std::move( _edge1 ), std::move( _edge2 ), std::move( _edge3 ) );
   };
   ~Triangle(){};
+  void init( std::shared_ptr<ETP::Edge<P,D>> _edge1, std::shared_ptr<ETP::Edge<P,D>> _edge2, std::shared_ptr<ETP::Edge<P,D>> _edge3 ){
+    orderEdges( std::move( _edge1 ), std::move( _edge2 ), std::move( _edge3 ) );
+    centroid = calculateCentroid();
+  }
   void orderEdges( std::shared_ptr<ETP::Edge<P,D>> _edge1, std::shared_ptr<ETP::Edge<P,D>> _edge2, std::shared_ptr<ETP::Edge<P,D>> _edge3 ){
-    edge1 = _edge1;
+    edge1 = std::move( _edge1 );
     std::shared_ptr<ETP::Point<P,D>> e1pt2 = edge1->getPointVal( 1 );
     if( _edge2->getPointVal( 0 )->equals( e1pt2 ) || _edge2->getPointVal( 1 )->equals( e1pt2 ) ){
-      edge2 = _edge2;
-      edge3 = _edge3;
+      edge2 = std::move( _edge2 );
+      edge3 = std::move( _edge3 );
     }else{
-      edge3 = _edge2;
-      edge2 = _edge3;
+      edge3 = std::move( _edge2 );
+      edge2 = std::move( _edge3 );
     }
   }
   void setComponent( int _c ){
@@ -53,7 +61,25 @@ public:
   int getComponent(){
     return component;
   }
-
+  std::shared_ptr<ETP::SearchNode<P,D>> getSearchNode(){
+    return searchNode;
+  }
+  void setSearchNode( ETP::SearchNode<P,D> _searchNode, std::vector<std::shared_ptr<ETP::SearchNode<P,D>>>& _usedList ){
+    searchNode = std::make_shared<ETP::SearchNode<P,D>>( _searchNode );
+    _usedList.push_back( searchNode );
+  }
+  void setSearchHValue( D _hValue ){
+    if( searchNode != nullptr ){ searchNode->hValue = _hValue; }
+  }
+  void setSearchGValue( D _gValue ){
+    if( searchNode != nullptr ){ searchNode->gValue = _gValue; }
+  }
+  void setSearchClosed( bool _closed ){
+    if( searchNode != nullptr ){ searchNode->closed = _closed; }
+  }
+  void setSearchComeFrom( std::shared_ptr<ETP::Triangle<P,D>> _comeFrom ){
+    if( searchNode != nullptr ){ searchNode->comeFrom = _comeFrom; }
+  }
   void setWidth( int _i, D _width ){
     widths[ _i ] = _width;
   }
@@ -94,6 +120,9 @@ public:
   int getLevel(){
     return level;
   }
+  ETP::Point<D,D> getCentroid(){
+    return centroid;
+  }
   std::shared_ptr<ETP::Edge<P,D>>& getEdgeRef( int _i ){
     if( _i == 0 ){
       return edge1;
@@ -111,6 +140,12 @@ public:
     }else{
       return edge3;
     }
+  }
+  int getEdgeIndex( std::shared_ptr<ETP::Edge<P,D>> _edge ){
+    if( _edge == edge1 ){ return 0; }
+    else if( _edge == edge2 ){ return 1; }
+    else if( _edge == edge3 ){ return 2; }
+    else{ return -1; }
   }
   void setAdjacent( size_t _i, std::shared_ptr<ETP::Triangle<P,D>> adjacentTri ){
     adjacents[ _i ] = adjacentTri;
@@ -244,8 +279,171 @@ public:
     }
     return -1;
   }
-};
+  bool isPointInside( std::shared_ptr<ETP::Point<P,D>> _pt ){
+    std::vector<std::shared_ptr<ETP::Point<P,D>>> points = getPoints();
+    std::shared_ptr<ETP::Point<P,D>> p0 = points[ 0 ];
+    std::shared_ptr<ETP::Point<P,D>> p1 = points[ 1 ];
+    std::shared_ptr<ETP::Point<P,D>> p2 = points[ 2 ];
+    D A = 0.5 *  (-p1->y * p2->x + p0->y * (-p1->x + p2->x) + p0->x * (p1->y - p2->y) + p1->x * p2->y);
+    P sign = A < 0.0f ? (P) -1 : (P) 1;
+    P s = (p0->y * p2->x - p0->x * p2->y + (p2->y - p0->y) * _pt->x + (p0->x - p2->x) * _pt->y) * sign;
+    P t = (p0->x * p1->y - p0->y * p1->x + (p0->y - p1->y) * _pt->x + (p1->x - p0->x) * _pt->y) * sign;
+    return  s > 0 && t > 0 &&  (D) ( s + t ) <  (D) 2.0f * A *  (D) sign;
+  }
+  bool isPointInside( ETP::Point<P,D> _pt ){
+    std::vector<std::shared_ptr<ETP::Point<P,D>>> points = getPoints();
+    std::shared_ptr<ETP::Point<P,D>> p0 = points[ 0 ];
+    std::shared_ptr<ETP::Point<P,D>> p1 = points[ 1 ];
+    std::shared_ptr<ETP::Point<P,D>> p2 = points[ 2 ];
+    D A = 0.5 *  (-p1->y * p2->x + p0->y * (-p1->x + p2->x) + p0->x * (p1->y - p2->y) + p1->x * p2->y);
+    P sign = A < 0.0f ? (P) -1 : (P) 1;
+    P s = (p0->y * p2->x - p0->x * p2->y + (p2->y - p0->y) * _pt.x + (p0->x - p2->x) * _pt.y) * sign;
+    P t = (p0->x * p1->y - p0->y * p1->x + (p0->y - p1->y) * _pt.x + (p1->x - p0->x) * _pt.y) * sign;
+    return  s > 0 && t > 0 &&  (D) ( s + t ) <  (D) 2.0f * A *  (D) sign;
+  }
+  std::vector<ETP::Point<P,D>> getBoundingBox(){
+    std::vector<std::shared_ptr<ETP::Point<P,D>>> pts = getPoints();
+    std::shared_ptr<ETP::Point<P,D>> p1 = pts[ 0 ];
+    std::shared_ptr<ETP::Point<P,D>> p2 = pts[ 1 ];
+    std::shared_ptr<ETP::Point<P,D>> p3 = pts[ 2 ];
+    ETP::Point<P,D> min( p1->x, p1->y );
+    min.x = std::min( min.x, p2->x );
+    min.x = std::min( min.x, p3->x );
+    min.y = std::min( min.y, p2->y );
+    min.y = std::min( min.y, p3->y );
+    ETP::Point<P,D> max( p1->x, p1->y );
+    max.x = std::max( max.x, p2->x );
+    max.x = std::max( max.x, p3->x );
+    max.y = std::max( max.y, p2->y );
+    max.y = std::max( max.y, p3->y );
+    std::vector<ETP::Point<P,D>> ret = std::vector<ETP::Point<P,D>>( 2 );
+    ret[ 0 ] = min;
+    ret[ 1 ] = max;
+    return ret;
+  }
+  std::vector<std::shared_ptr<ETP::Point<P,D>>> getPoints(){
+    std::vector<std::shared_ptr<ETP::Point<P,D>>> ret;
+    ret.push_back( edge1->getPointVal( 0 ) );
+    ret.push_back( edge1->getPointVal( 1 ) );
+    if( edge2->getPointVal( 0 ) == edge1->getPointVal( 0 ) || edge2->getPointVal( 0 ) == edge1->getPointVal( 1 ) ){
+      ret.push_back( edge2->getPointVal( 1 ) );
+    }else{
+      ret.push_back( edge2->getPointVal( 0 ) );
+    }
+    return ret;
+  }
+  ETP::Point<D,D> calculateCentroid(){
+    std::vector<std::shared_ptr<ETP::Point<P,D>>> pts = getPoints();
+    return ETP::Point<D,D>( (D) pts[ 0 ]->x / 3.0 + (D) pts[ 1 ]->x / 3.0 + (D) pts[ 2 ]->x / 3.0,
+                            (D) pts[ 0 ]->y / 3.0 + (D) pts[ 1 ]->y / 3.0 + (D) pts[ 2 ]->y / 3.0
+   );
+  }
+  int getConnectedNodeIndex( std::shared_ptr<ETP::Triangle<P,D>> _other ){
+    if( _other == nullptr ){ return -1; }
+    for ( int i = 0; i < 3; i++ ){
+      if( connectedNodes[ i ] == _other ){ return i; }
+    }
+    return -1;
+  }
+  /*
+  std::vector<std::shared_ptr<ETP::Triangle<P,D>>> getTrianglesToConnectedNode( int connectedNodeIdx ){
+    std::vector<std::shared_ptr<ETP::Triangle<P,D>>> ret;
+    std::shared_ptr<ETP::Triangle<P,D>> goal = connectedNodes[ connectedNodeIdx ];
+    if( goal == nullptr ){ throw std::invalid_argument( "Triangle::getTrianglesToConnectedNode: search to null goal" ); }
+    std::shared_ptr<ETP::Triangle<P,D>> tCurrent = this;
+    bool endReached = false;
+    while( endReached == false ){
+      ret.push_back( tCurrent );
+      if( tCurrent == goal ){
+        endReached = true;
+        break;
+      }
+      int nextIndex = tCurrent->getConnectedNodeIndex( goal );
+      tCurrent = tCurrent->getAdjacentVal( nextIndex );
+    }
+    return ret;
+  }
+  */
+  std::shared_ptr<ETP::Triangle<P,D>> getLvl1RootNode(){
+    if( level != 1 ){ return nullptr; }
+    for( size_t i = 0; i < 3; i++ ){
+      if( connectedNodes[ i ] != nullptr ){
+        return connectedNodes[ i ];
+      }
+    }
+    return nullptr;
+  }
+  bool isPartOfLvl2Loop(){
+    if( level != 2 ){ return false; }
+    int ct = 0;
+    std::shared_ptr<ETP::Triangle<P,D>> endPoint1 = nullptr;
+    for ( int i = 0; i < 3; i++ ){
+      if( endPoint1 == nullptr && connectedNodes[ i ] != nullptr ){
+        endPoint1 = connectedNodes[ i ];
+      }else if( endPoint1 != nullptr && endPoint1 == connectedNodes[ i ] ){
+        return true;
+      }
+    }
+    return false;
+  }
+  bool isPartoflvl2Ring(){
+    if( level != 2 || connectedNodes[ 0 ] != nullptr || connectedNodes[ 1 ] != nullptr || connectedNodes[ 2 ] != nullptr ){ return false; }
+    return true;
+  }
+  bool isOnSameLvl2Loop( std::shared_ptr<ETP::Triangle<P,D>> _other ){
+    if( level != 2 || _other->getLevel() != 2 ){ return false; }
+    std::shared_ptr<ETP::Triangle<P,D>> endPoint1 = nullptr;
+    std::shared_ptr<ETP::Triangle<P,D>> endPoint2 = nullptr;
+    for( int i = 0; i < 3; i++ ){
+      std::shared_ptr<ETP::Triangle<P,D>> e1 = connectedNodes[ i ];
+      if( endPoint1 == nullptr && e1 != nullptr ){
+        endPoint1 = e1;
+      }else if( endPoint1 != nullptr && ( e1 != nullptr && e1 != endPoint1 ) ){
+        return false;
+      }
+      std::shared_ptr<ETP::Triangle<P,D>> e2 = _other->getConnectedNode( i );
+      if( endPoint2 == nullptr && e2 != nullptr ){
+        endPoint2 = e2;
+      }else if( endPoint2 != nullptr && ( e2 != nullptr && e2 != endPoint2 ) ){
+        return false;
+      }
+    }
+    if( endPoint1 == endPoint2 ){
+      return true;
+    }
+    return false;
+  }
+  bool haveSameLvl2CorridorEndpoints( std::shared_ptr<ETP::Triangle<P,D>> _other ){
+    if( level != 2 || _other->getLevel() != 2 ){ return false; }
+    std::shared_ptr<ETP::Triangle<P,D>> endPoint1 = nullptr;
+    std::shared_ptr<ETP::Triangle<P,D>> endPoint2 = nullptr;
+    std::shared_ptr<ETP::Triangle<P,D>> o_endPoint1 = nullptr;
+    std::shared_ptr<ETP::Triangle<P,D>> o_endPoint2 = nullptr;
+    for( int i = 0; i < 3; i++ ){
+      std::shared_ptr<ETP::Triangle<P,D>> cn = connectedNodes[ i ];
+      if( cn != nullptr ){
+        if( endPoint1 == nullptr ){ endPoint1 = cn; }
+        else if( cn == endPoint1 ){ return false; }
+        else{ endPoint2 = cn; }
+      }
+      std::shared_ptr<ETP::Triangle<P,D>> cn2 = _other->getConnectedNode( i );
+      if( cn2 != nullptr ){
+        if( o_endPoint1 == nullptr ){ o_endPoint1 = cn2; }
+        else if( cn2 == o_endPoint1 ){ return false; }
+        else{ o_endPoint2 = cn2; }
+      }
+    }
+    if( ( endPoint1 == o_endPoint1 && endPoint2 == o_endPoint2 ) || ( endPoint1 == o_endPoint2 && endPoint2 == o_endPoint1 ) ){
+      return true;
+    }
+    return false;
+  }
+};// end of Class
 
-}
+
+
+
+
+}// end of namespace
 
 #endif

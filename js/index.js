@@ -249,7 +249,7 @@ document.body.addEventListener( "click", e => {
 */
 
 let polypts = [
-  [ [ 10, 10 ],  [ 90, 10 ], [ 90, 90 ], [ 70, 90 ],[ 70, 95 ], [ 90, 95 ],[ 90, 110], [ 70, 110 ], [ 50, 110 ], [ 50, 90 ],  [ 10, 90 ]   ],
+  [ [ 10, 10 ],  [ 90, 10 ], [ 90, 90 ], [ 70, 90 ],[ 70, 95 ], [ 90, 95 ],[ 90, 110], [ 70, 110 ], [ 60, 115 ], [ 50, 125 ], [ 50, 90 ],  [ 10, 90 ]   ],
   [ [ 20, 20 ], [ 30, 20 ], [ 30, 30 ], [ 20, 30 ] ],
   [ [ 50, 20 ], [ 60, 20 ], [ 60, 30 ], [ 50, 30 ] ],
   [ [ 20, 60 ], [ 30, 60 ], [ 30, 70 ], [ 20, 70 ] ],
@@ -278,7 +278,7 @@ console.log( JSON.stringify( triangulation ) );
 let SCALE =8;
 drawTriangles( triangulation, document.getElementById( "canvas" ), SCALE );
 drawWidths( triangulation,[ { triIndex: ( Math.floor( Math.random() * triangulation.length ) ), edgeIndex: ( Math.floor( Math.random() * 3 ) ) } ], document.getElementById( "canvas" ), SCALE );
-
+//drawSectors( td.getSectors(), document.getElementById( "canvas" ), SCALE )
 
 /*
  let  pt1 = [ 20, 20 ],
@@ -299,6 +299,64 @@ console.log( "///////////////// ////// ////////// ///////:" );
 //console.log( JSON.stringify( clip ) );
  //drawClip( clip[ 0 ], document.getElementById( "canvas" ), SCALE )
 // drawP2T( clip, document.getElementById( "canvas" ), SCALE )
+/*
+document.getElementById( "canvas" ).addEventListener( "click", e =>{
+//  console.log( e.clientX / SCALE + " / " + e.clientY / SCALE )
+  let id = td.getTriangleId( Math.round(e.clientX / SCALE), Math.round(e.clientY / SCALE ) );
+//  console.log( "id : " + id );
+console.log( JSON.stringify( id ) );
+})
+*/
+clickInfo = { start:{}, end:{}, first: true };
+document.getElementById( "canvas" ).addEventListener( "click", e =>{
+  let x = Math.round(e.clientX / SCALE),
+      y = Math.round(e.clientY / SCALE );
+  if( clickInfo.first == true ){
+    clickInfo.start.x = x;
+    clickInfo.start.y = y;
+    clickInfo.first = false;
+    console.log( "start set at x:"+x+"/y:"+y);
+  }else{
+      clickInfo.end.x = x;
+      clickInfo.end.y = y;
+      clickInfo.first = true;
+      console.log( "end set at x:"+x+"/y:"+y);
+      console.log( JSON.stringify( td.testTRAStar( clickInfo.start.x, clickInfo.start.y, clickInfo.end.x, clickInfo.end.y ) ));
+  }
+})
+let satPoly1 = [ 0.0, 0.0,    10.0, 0.0,  5.0, 10.0 ],
+    satPoly2 = [ 8.0, 0.0,    15.0, 0.0,  15.0, 10.0, 0.0, 10.0 ],
+    collide = td.testSAT( satPoly1, satPoly2 );
+    console.log( "SAT : " + collide );
+
+function drawSectors( sectors, _cv, _scale ){
+  let nbRow = sectors.sectors.length,
+      nbCol = sectors.sectors[ 0 ].length,
+      ctx = _cv.getContext( "2d" ),
+      scale = _scale || 1;
+  ctx.beginPath();
+  for( let y = 0; y < nbRow; y++ ){
+    ctx.moveTo( sectors.minX * scale, ( sectors.minY + y * sectors.height ) * scale );
+    ctx.lineTo( (sectors.minX + nbCol * sectors.width) * scale, ( sectors.minY + y * sectors.height ) * scale );
+  }
+  for( let x = 0; x < nbCol; x++ ){
+    ctx.moveTo( ( sectors.minX + x * sectors.width ) * scale,  sectors.minY * scale );
+    ctx.lineTo( ( sectors.minX + x * sectors.width ) * scale, ( sectors.minY + nbRow * sectors.height ) * scale );
+  }
+  ctx.stroke();
+  ctx.font = '11px serif';
+  ctx.textBaseline = "top";
+  ctx.textAlign = "left"
+  sectors.sectors.forEach( ( row, y )=>{
+    row.forEach( ( cell, x )=>{
+      let str = "";
+      cell.forEach( id =>{
+        str += id+",";
+      })
+      ctx.strokeText( str, ( x * sectors.width + sectors.minX ) * scale, ( y * sectors.height + sectors.minY ) * scale );
+    })
+  })
+}
 
 function getTriCentroid(_coord){
   let coord = [ [_coord[ 0 ], _coord[ 1 ] ], [ _coord[ 2 ], _coord[ 3 ] ], [ _coord[ 4 ], _coord[ 5 ] ] ];
@@ -349,14 +407,22 @@ function drawTriangles( _triangulation, _cv, _scale ){
         to2y = (center[ 1 ]*scale) + ( edgeC2y - center[ 1 ]*scale ) * cToE,
         to3x = (center[ 0 ]*scale) + ( edgeC3x - center[ 0 ]*scale ) * cToE,
         to3y = (center[ 1 ]*scale) + ( edgeC3y - center[ 1 ]*scale ) * cToE,
-        a = tri.nodes;
+        a = tri.lowerBounds;
     ctx.strokeStyle = "red";
 
-    if( a[ 0 ] > -1 ){ ctx.strokeText( a[ 0 ], to1x, to1y );  }
-    if( a[ 1 ] > -1 ){ ctx.strokeText( a[ 1 ], to2x, to2y );  }
-    if( a[ 2 ] > -1 ){ ctx.strokeText( a[ 2 ], to3x, to3y );  }
+    if( a[ 0 ] > 0 ){ ctx.strokeText( a[ 0 ].toFixed(2), to1x, to1y );  }
+    if( a[ 1 ] > 0 ){ ctx.strokeText( a[ 1 ].toFixed(2), to2x, to2y );  }
+    if( a[ 2 ] > 0 ){ ctx.strokeText( a[ 2 ].toFixed(2), to3x, to3y );  }
 
     ctx.strokeStyle = "black";
+
+    let centroid = tri.centroid;
+    ctx.beginPath();
+    ctx.moveTo( centroid.x * scale, centroid.y * scale );
+    ctx.arc( centroid.x * scale, centroid.y * scale, 5, 0, 2*Math.PI)
+    ctx.fill();
+
+
   })
 }
 
