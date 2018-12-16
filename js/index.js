@@ -99,16 +99,17 @@ function addBlock( w, h, x, y ){
 var displayScale = 0.5,
     agentRadius = 15;
 
-var setCanvas = ()=>{
+var setCanvas = ( id, background )=>{
   let cv  = document.body.appendChild( document.createElement( "canvas" ) );
-  cv.id = "canvas";
+  cv.id = id;
+  cv.style.position = "absolute";
   cv.style.width = "1000px";
   cv.style.height = "1000px";
   cv.style.margin = 0;
   cv.style.padding = 0;
   cv.width = 1000;
   cv.height = 1000;
-  cv.style.backgroundColor = "#f0d5ba";
+  if( background ) cv.style.backgroundColor = background;
 }
 var agents = [];
 var setAgent = ( x, y, goal, options )=>{
@@ -183,7 +184,9 @@ var loop = ()=>{
   window.requestAnimationFrame( loop );
 }
 
-setCanvas();
+setCanvas( "canvas", "#f0d5ba" );
+setCanvas( "tmpCanvas" );
+document.getElementById( "tmpCanvas" ).style.pointerEvents = "none";
 td.setTimeStep( 2 );
 td.setAgentDefaults( 80, 40, 100,100, agentRadius, 25 );
 /*
@@ -249,12 +252,16 @@ document.body.addEventListener( "click", e => {
 */
 
 let polypts = [
-  [ [ 10, 10 ],  [ 90, 10 ], [ 90, 90 ], [ 70, 90 ],[ 70, 95 ], [ 90, 95 ],[ 90, 110], [ 70, 110 ], [ 60, 115 ], [ 50, 125 ], [ 50, 90 ],  [ 10, 90 ]   ],
+  [ [ 10, 10 ],  [ 90, 10 ], //top
+    [ 90, 40 ], [ 110, 20 ], [ 115, 45 ], [ 110, 50 ], [ 90, 50 ],
+
+  [ 90, 90 ], [ 70, 90 ],[ 70, 95 ], [ 90, 95 ],[ 90, 110], [ 70, 110 ], [ 60, 115 ], [ 50, 125 ], [ 50, 90 ],  [ 10, 90 ]   ],
   [ [ 20, 20 ], [ 30, 20 ], [ 30, 30 ], [ 20, 30 ] ],
   [ [ 50, 20 ], [ 60, 20 ], [ 60, 30 ], [ 50, 30 ] ],
   [ [ 20, 60 ], [ 30, 60 ], [ 30, 70 ], [ 20, 70 ] ],
-  [ [ 70, 70 ], [ 85, 70], [ 85, 80 ], [ 70, 80 ] ]
-
+  [ [ 70, 70 ], [ 85, 70], [ 85, 80 ], [ 70, 80 ] ],
+  [ [ 88, 43 ], [ 105, 43 ], [ 105, 45 ],[ 88, 46 ] ],
+  [[ 50, 50], [ 60, 50], [ 60,60 ], [50, 60 ]]
 ];
 
 /*
@@ -308,20 +315,36 @@ console.log( JSON.stringify( id ) );
 })
 */
 clickInfo = { start:{}, end:{}, first: true };
-document.getElementById( "canvas" ).addEventListener( "click", e =>{
+document.getElementById( "canvas" ).addEventListener( "mouseup", e =>{
+  /*
   let x = Math.round(e.clientX / SCALE),
       y = Math.round(e.clientY / SCALE );
+  */
+  let x =  e.clientX,
+      y = e.clientY,
+      triId = td.getTriangleId(x,y, SCALE);
+  if( triId < 0 ){ return 0; }
   if( clickInfo.first == true ){
     clickInfo.start.x = x;
     clickInfo.start.y = y;
-    clickInfo.first = false;
-    console.log( "start set at x:"+x+"/y:"+y);
+
+
+    clickInfo.first = false,
+    cv = document.getElementById( "tmpCanvas" ),
+    cv.getContext( "2d" ).clearRect( 0, 0, cv.width, cv.height );
+  console.log( "start set at x:"+x+"/y:"+y+"/id:"+td.getTriangleId(x,y, SCALE));
+
   }else{
       clickInfo.end.x = x;
       clickInfo.end.y = y;
-      clickInfo.first = true;
-      console.log( "end set at x:"+x+"/y:"+y);
-      console.log( JSON.stringify( td.testTRAStar( clickInfo.start.x, clickInfo.start.y, clickInfo.end.x, clickInfo.end.y ) ));
+
+      let funnel = td.testTRAStarScale( clickInfo.start.x, clickInfo.start.y, clickInfo.end.x, clickInfo.end.y, SCALE );
+
+      console.log( JSON.stringify( funnel ));
+      console.log( "end set at x:"+x+"/y:"+y+"/startId:"+td.getTriangleId(clickInfo.start.x, clickInfo.start.y, SCALE)+"/endId:"+td.getTriangleId(clickInfo.end.x, clickInfo.end.y, SCALE));
+      if( funnel.triangles[ 0 ].positions )fillTriangles( funnel.triangles, document.getElementById( "tmpCanvas" ), SCALE, "rgba(235, 221, 56, 0.5)" );
+      clickInfo = { start:{}, end:{}, first: true };
+      //
   }
 })
 let satPoly1 = [ 0.0, 0.0,    10.0, 0.0,  5.0, 10.0 ],
@@ -407,12 +430,13 @@ function drawTriangles( _triangulation, _cv, _scale ){
         to2y = (center[ 1 ]*scale) + ( edgeC2y - center[ 1 ]*scale ) * cToE,
         to3x = (center[ 0 ]*scale) + ( edgeC3x - center[ 0 ]*scale ) * cToE,
         to3y = (center[ 1 ]*scale) + ( edgeC3y - center[ 1 ]*scale ) * cToE,
-        a = tri.lowerBounds;
+        a = tri.lowerBounds,
+        n = tri.nodes;
     ctx.strokeStyle = "red";
 
-    if( a[ 0 ] > 0 ){ ctx.strokeText( a[ 0 ].toFixed(2), to1x, to1y );  }
-    if( a[ 1 ] > 0 ){ ctx.strokeText( a[ 1 ].toFixed(2), to2x, to2y );  }
-    if( a[ 2 ] > 0 ){ ctx.strokeText( a[ 2 ].toFixed(2), to3x, to3y );  }
+    if( a[ 0 ] > -1 ){ ctx.strokeText( a[ 0 ].toFixed(2)+"-"+n[ 0 ], to1x, to1y );  }
+    if( a[ 1 ] >  -1 ){ ctx.strokeText( a[ 1 ].toFixed(2)+"-"+n[ 1 ], to2x, to2y );  }
+    if( a[ 2 ] >  -1 ){ ctx.strokeText( a[ 2 ].toFixed(2)+"-"+n[ 2 ], to3x, to3y );  }
 
     ctx.strokeStyle = "black";
 
@@ -420,9 +444,28 @@ function drawTriangles( _triangulation, _cv, _scale ){
     ctx.beginPath();
     ctx.moveTo( centroid.x * scale, centroid.y * scale );
     ctx.arc( centroid.x * scale, centroid.y * scale, 5, 0, 2*Math.PI)
+  //  ctx.fill();
+
+
+  })
+}
+
+function fillTriangles( _triangulation, _cv, _scale, _color ){
+  let ctx = _cv.getContext( "2d" ),
+      scale = _scale || 1,
+      nbTri = _triangulation.length;
+  ctx.clearRect( 0, 0, _cv.width, _cv.height );
+  _triangulation.forEach( tri =>{
+    let p = tri.positions,
+        c = tri.constrained;
+    ctx.fillStyle = _color;
+    ctx.beginPath();
+    ctx.moveTo( p[ 0 ] * scale,  p[ 1 ] * scale );
+    ctx.lineTo( p[ 2 ] * scale,  p[ 3 ] * scale );
+
+    ctx.lineTo( p[ 4 ] * scale,  p[ 5 ] * scale );
+    ctx.closePath();
     ctx.fill();
-
-
   })
 }
 

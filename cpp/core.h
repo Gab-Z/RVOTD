@@ -66,6 +66,7 @@ class TowerDefense  : public Nan::ObjectWrap {
     static NAN_METHOD( getSectors );
 
     static NAN_METHOD( testTRAStar );
+    static NAN_METHOD( testTRAStarScale );
 
     void init();
 

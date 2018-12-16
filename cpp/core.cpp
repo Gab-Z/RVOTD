@@ -32,7 +32,7 @@ NAN_MODULE_INIT( TowerDefense::Init ) {
   Nan::SetPrototypeMethod( ctor, "getSectors", getSectors );
   Nan::SetPrototypeMethod( ctor, "testTRAStar", testTRAStar );
 
-
+  Nan::SetPrototypeMethod( ctor, "testTRAStarScale", testTRAStarScale );
 
 
   //Nan::SetPrototypeMethod( ctor, "triangulate", triangulate );
@@ -480,7 +480,8 @@ NAN_METHOD( TowerDefense::getTriangleId ){
   TowerDefense* self = Nan::ObjectWrap::Unwrap<TowerDefense>( info.This() );
   tPos x = info[ 0 ]->IntegerValue();
   tPos y = info[ 1 ]->IntegerValue();
-  std::shared_ptr<ETP::Triangle<tPos,tDecim>> t = self->space->getTriangleWithPoint( ETP::Point<tPos,tDecim>( x, y ) );
+  tDecim scale = info[ 2 ]->NumberValue();
+  std::shared_ptr<ETP::Triangle<tPos,tDecim>> t = self->space->getTriangleWithPoint( ETP::Point<tPos,tDecim>( x, y ), scale );
   if( t == nullptr ){
     info.GetReturnValue().Set( Nan::New( -1 ) );
   }else{
@@ -503,6 +504,43 @@ NAN_METHOD( TowerDefense::testTRAStar ){
   tPos gy = info[ 3 ]->IntegerValue();
   std::shared_ptr<ETP::Triangle<tPos,tDecim>> gt = self->space->getTriangleWithPoint( ETP::Point<tPos,tDecim>( gx, gy ) );
   //std::string ret = self->space->abstractTriangulationSearch( st, gt );
-  std::vector<std::shared_ptr<ETP::Triangle<tPos,tDecim>>> ret = self->space->abstractTriangulationSearch( st, gt );
-  info.GetReturnValue().Set( self->space->listTrianglesIds( ret ) );
+  //std::vector<std::shared_ptr<ETP::Triangle<tPos,tDecim>>> ret = self->space->abstractTriangulationSearch( st, gt );
+  std::vector<std::shared_ptr<ETP::Triangle<tPos,tDecim>>> ret = self->space->abstractTriangulationSearch( ETP::Point<tPos,tDecim>( sx, sy ),  ETP::Point<tPos,tDecim>( gx, gy ), 2.0 );
+
+  v8::Local<v8::Array> ids =  self->space->listTrianglesIds( ret );
+  v8::Local<v8::Array> tris = self->space->convertTriangles( ret );
+
+  v8::Local<v8::Object> ob = Nan::New<v8::Object>();
+  v8::Local<v8::String> triProp = Nan::New( "triangles" ).ToLocalChecked();
+  v8::Local<v8::String> idProp = Nan::New( "ids" ).ToLocalChecked();
+  ob->Set( triProp, tris );
+  ob->Set( idProp, ids );
+
+  info.GetReturnValue().Set( ob );
+}
+
+NAN_METHOD( TowerDefense::testTRAStarScale ){
+  TowerDefense* self = Nan::ObjectWrap::Unwrap<TowerDefense>( info.This() );
+  tPos sx = info[ 0 ]->IntegerValue();
+  tPos sy = info[ 1 ]->IntegerValue();
+
+  tPos gx = info[ 2 ]->IntegerValue();
+  tPos gy = info[ 3 ]->IntegerValue();
+  tDecim scale = info[ 4 ]->NumberValue();
+  std::shared_ptr<ETP::Triangle<tPos,tDecim>> st = self->space->getTriangleWithPoint( ETP::Point<tPos,tDecim>( sx, sy ), scale );
+  std::shared_ptr<ETP::Triangle<tPos,tDecim>> gt = self->space->getTriangleWithPoint( ETP::Point<tPos,tDecim>( gx, gy ), scale );
+  //std::string ret = self->space->abstractTriangulationSearch( st, gt );
+  //std::vector<std::shared_ptr<ETP::Triangle<tPos,tDecim>>> ret = self->space->abstractTriangulationSearch( st, gt );
+  std::vector<std::shared_ptr<ETP::Triangle<tPos,tDecim>>> ret = self->space->abstractTriangulationSearch( ETP::Point<tPos,tDecim>( sx, sy ),  ETP::Point<tPos,tDecim>( gx, gy ), 2.0, scale );
+
+  v8::Local<v8::Array> ids =  self->space->listTrianglesIds( ret );
+  v8::Local<v8::Array> tris = self->space->convertTriangles( ret );
+
+  v8::Local<v8::Object> ob = Nan::New<v8::Object>();
+  v8::Local<v8::String> triProp = Nan::New( "triangles" ).ToLocalChecked();
+  v8::Local<v8::String> idProp = Nan::New( "ids" ).ToLocalChecked();
+  ob->Set( triProp, tris );
+  ob->Set( idProp, ids );
+
+  info.GetReturnValue().Set( ob );
 }

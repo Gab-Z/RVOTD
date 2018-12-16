@@ -70,9 +70,17 @@ struct Point {
   D dist( Point& other ){
     D dx = (D) other.x - (D) x;
     D dy = (D) other.y - (D) y;
-    return std::sqrt( dx * dx + dy * dy  );
+    return std::pow( dx * dx + dy * dy, 0.5 );
   }
-
+//((p1 - q1)^2 + (p2 - q2)^2)^(1/2)
+/*
+  Point operator* ( D _x ){
+      return Point( _x * x, _x * y  );
+  }
+*/
+  Point operator* ( const D _x ){
+      return Point( _x * x, _x * y  );
+  }
 
 };
 

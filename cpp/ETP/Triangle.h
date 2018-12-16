@@ -64,18 +64,17 @@ public:
   std::shared_ptr<ETP::SearchNode<P,D>> getSearchNode(){
     return searchNode;
   }
-  void setSearchNode( ETP::SearchNode<P,D> _searchNode, std::vector<std::shared_ptr<ETP::SearchNode<P,D>>>& _usedList ){
+  void setSearchNode( ETP::SearchNode<P,D> _searchNode ){
     searchNode = std::make_shared<ETP::SearchNode<P,D>>( _searchNode );
-    _usedList.push_back( searchNode );
+  }
+  void clearSearchNode(){
+    searchNode = nullptr;
   }
   void setSearchHValue( D _hValue ){
     if( searchNode != nullptr ){ searchNode->hValue = _hValue; }
   }
   void setSearchGValue( D _gValue ){
     if( searchNode != nullptr ){ searchNode->gValue = _gValue; }
-  }
-  void setSearchClosed( bool _closed ){
-    if( searchNode != nullptr ){ searchNode->closed = _closed; }
   }
   void setSearchComeFrom( std::shared_ptr<ETP::Triangle<P,D>> _comeFrom ){
     if( searchNode != nullptr ){ searchNode->comeFrom = _comeFrom; }
@@ -101,6 +100,16 @@ public:
   }
   D getAngle( int _i ){
     return angles[ _i ];
+  }
+  D getAngle( std::shared_ptr<ETP::Edge<P,D>> _edge1, std::shared_ptr<ETP::Edge<P,D>> _edge2 ){
+    if( ( _edge1 == edge1 && _edge2 == edge2 ) || ( _edge1 == edge2 && _edge2 == edge1 ) ){
+      return angles[ 0 ];
+    }else if( ( _edge1 == edge2 && _edge2 == edge3 ) || ( _edge1 == edge3 && _edge2 == edge2 ) ){
+      return angles[ 1 ];
+    }else if( ( _edge1 == edge3 && _edge2 == edge1 ) || ( _edge1 == edge1 && _edge2 == edge3 ) ){
+      return angles[2];
+    }
+    //return 0.0f;
   }
   void setChoke( size_t _i, P _choke ){
     chokes[ _i ] = _choke;
@@ -301,6 +310,21 @@ public:
     P t = (p0->x * p1->y - p0->y * p1->x + (p0->y - p1->y) * _pt.x + (p1->x - p0->x) * _pt.y) * sign;
     return  s > 0 && t > 0 &&  (D) ( s + t ) <  (D) 2.0f * A *  (D) sign;
   }
+  bool isPointInside( ETP::Point<P,D> p_pt, D _scale ){
+    std::vector<std::shared_ptr<ETP::Point<P,D>>> points = getPoints();
+    ETP::Point<P,D> bp0 = *points[ 0 ].get();
+    ETP::Point<D,D> p0 = ETP::Point<D,D>( (D) bp0.x * _scale, (D) bp0.y * _scale );
+    ETP::Point<P,D> bp1 = *points[ 1 ].get();
+    ETP::Point<D,D> p1 = ETP::Point<D,D>( (D) bp1.x * _scale, (D) bp1.y * _scale );
+    ETP::Point<P,D> bp2 = *points[ 2 ].get();
+    ETP::Point<D,D> p2 = ETP::Point<D,D>( (D) bp2.x * _scale, (D) bp2.y * _scale );
+    ETP::Point<D,D> _pt = ETP::Point<D,D>( (D) p_pt.x, (D) p_pt.y );
+    D A = 0.5 *  (-p1.y * p2.x + p0.y * (-p1.x + p2.x) + p0.x * (p1.y - p2.y) + p1.x * p2.y );
+    D sign = A < 0.0f ? (D) -1.0 : (D) 1.0;
+    D s = (p0.y * p2.x - p0.x * p2.y + (p2.y - p0.y) * _pt.x + (p0.x - p2.x) * _pt.y) * sign;
+    D t = (p0.x * p1.y - p0.y * p1.x + (p0.y - p1.y) * _pt.x + (p1.x - p0.x) * _pt.y) * sign;
+    return  s > 0.0 && t > 0.0 && ( s + t ) < 2.0 * A * sign;
+  }
   std::vector<ETP::Point<P,D>> getBoundingBox(){
     std::vector<std::shared_ptr<ETP::Point<P,D>>> pts = getPoints();
     std::shared_ptr<ETP::Point<P,D>> p1 = pts[ 0 ];
@@ -345,6 +369,44 @@ public:
     }
     return -1;
   }
+  int getReversedConnectedNodeIndex( std::shared_ptr<ETP::Triangle<P,D>> _connectedNode ){
+    std::shared_ptr<ETP::Triangle<P,D>> otherConnectedNode;
+    D lowerBound = getLowerBound( getConnectedNodeIndex(_connectedNode ) );
+    std::shared_ptr<ETP::Edge<P,D>> e1 = getEdgeVal( getConnectedNodeIndex( _connectedNode ) );
+    for( int k = 0; k < 3; k++ ){
+      std::shared_ptr<ETP::Triangle<P,D>> kNode = getConnectedNode( k );
+      if( kNode != nullptr && kNode != _connectedNode ){
+        otherConnectedNode = kNode;
+        lowerBound += getLowerBound( k );
+        break;
+      }
+    }
+    for( int l = 0; l < 3; l++ ){
+      std::shared_ptr<ETP::Triangle<P,D>> lNode = _connectedNode->getConnectedNode( l );
+      if( lNode != nullptr && lNode == otherConnectedNode /*&& _connectedNode->getLowerBound( l ) == lowerBound*/ ){
+        std::shared_ptr<ETP::Edge<P,D>> e2 = getEdgeVal( getConnectedNodeIndex( otherConnectedNode ) );
+        D innerAngle = getAngle( e1, e2 );
+        if( _connectedNode->getLowerBound( l ) == lowerBound + innerAngle ){
+          return l;
+        }
+      }
+    }
+  }
+  int getLvl2ToLvl2Index( std::shared_ptr<ETP::Triangle<P,D>> _otherLvl2 ){
+    for( int i = 0; i < 3; i++ ){
+      std::shared_ptr<ETP::Triangle<P,D>> iNode = getConnectedNode( i );
+      if( iNode != nullptr ){
+        D iLowerBound = getLowerBound( i );
+        for( int j = 0; j < 3; j++ ){
+          std::shared_ptr<ETP::Triangle<P,D>> jNode = _otherLvl2->getConnectedNode( j );
+          if( jNode != nullptr && jNode == iNode && _otherLvl2->getLowerBound( j ) < iLowerBound ){
+            return i;
+          }
+        }
+      }
+    }
+    return -1;
+  }
   /*
   std::vector<std::shared_ptr<ETP::Triangle<P,D>>> getTrianglesToConnectedNode( int connectedNodeIdx ){
     std::vector<std::shared_ptr<ETP::Triangle<P,D>>> ret;
@@ -364,6 +426,7 @@ public:
     return ret;
   }
   */
+
   std::shared_ptr<ETP::Triangle<P,D>> getLvl1RootNode(){
     if( level != 1 ){ return nullptr; }
     for( size_t i = 0; i < 3; i++ ){
@@ -438,6 +501,7 @@ public:
     }
     return false;
   }
+
 };// end of Class
 
 

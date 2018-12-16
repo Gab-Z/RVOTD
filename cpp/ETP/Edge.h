@@ -127,7 +127,20 @@ public:
     return ETP::Point<T,D>( (T)( point2->x - point1->x ), (T)( point2->y - point1->y ) );
   }
 
-
+  D minimumDistance( ETP::Point<P,D> _p, D _scale ){
+    ETP::Point<P,D> bv = *getPointVal( 0 ).get();
+    ETP::Point<D,D> v = ETP::Point<D,D>( (D) bv.x  * _scale, (D) bv.y  * _scale );
+    ETP::Point<P,D> bw = *getPointVal( 1 ).get();
+    ETP::Point<D,D> w = ETP::Point<D,D>( (D) bw.x * _scale, (D) bw.y * _scale );
+    ETP::Point<D,D> p = ETP::Point<D,D>( (D) _p.x, (D) _p.y );
+    D l2 = ( ( w.x - v.x ) * ( w.x - v.x ) ) + ( ( w.y - v.y ) * ( w.y - v.y ) );
+    if( l2 == 0.0 ) return p.dist( v );
+    ETP::Point<D,D> vp = ETP::Point<D,D>( p.x - v.x, p.y - v.y );
+    ETP::Point<D,D> vw = ETP::Point<D,D>( w.x - v.x, w.y - v.y );
+    const D t = std::max( (D) 0.0, std::min( (D) 1.0, vp.dot( vw ) / l2 ) );
+    ETP::Point<D,D> projection = ETP::Point<D,D>( v.x + t * ( w.x - v.x ),  v.y + t * ( w.y - v.y ) );
+    return p.dist( projection );
+  }
 };
 
 }
