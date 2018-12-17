@@ -187,6 +187,11 @@ var loop = ()=>{
 setCanvas( "canvas", "#f0d5ba" );
 setCanvas( "tmpCanvas" );
 document.getElementById( "tmpCanvas" ).style.pointerEvents = "none";
+
+polyMaker.createUI( document.body, document.getElementById( "canvas" ) );
+
+
+
 td.setTimeStep( 2 );
 td.setAgentDefaults( 80, 40, 100,100, agentRadius, 25 );
 /*
@@ -251,6 +256,48 @@ document.body.addEventListener( "click", e => {
 } );
 */
 
+const triangulationBut = document.body.appendChild( document.createElement("button"));
+triangulationBut.style.position = "absolute";
+triangulationBut.textContent = "triangulate";
+triangulationBut.style.top = 0;
+triangulationBut.style.left = 0;
+var clickInfo = { start:{}, end:{}, first: true };
+
+triangulationBut.addEventListener( "click", e => {
+  if( !polyMaker.array ){ return false;}
+  let triangulation = td.clip2triangulate( polyMaker.array );
+  console.log( JSON.stringify( triangulation ) );
+  let SCALE =1;
+  drawTriangles( triangulation, document.getElementById( "canvas" ), SCALE );
+  clickInfo = { start:{}, end:{}, first: true };
+  document.getElementById( "canvas" ).addEventListener( "mouseup", e =>{
+    let x =  e.clientX,
+        y = e.clientY,
+        triId = td.getTriangleId(x,y, SCALE);
+    if( triId < 0 ){ return 0; }
+    if( clickInfo.first == true ){
+      clickInfo.start.x = x;
+      clickInfo.start.y = y;
+      clickInfo.first = false,
+      cv = document.getElementById( "tmpCanvas" ),
+      cv.getContext( "2d" ).clearRect( 0, 0, cv.width, cv.height );
+    console.log( "start set at x:"+x+"/y:"+y+"/id:"+td.getTriangleId(x,y, SCALE));
+
+    }else{
+        clickInfo.end.x = x;
+        clickInfo.end.y = y;
+
+        let funnel = td.testTRAStarScale( clickInfo.start.x, clickInfo.start.y, clickInfo.end.x, clickInfo.end.y, SCALE );
+
+        console.log( JSON.stringify( funnel ));
+        console.log( "end set at x:"+x+"/y:"+y+"/startId:"+td.getTriangleId(clickInfo.start.x, clickInfo.start.y, SCALE)+"/endId:"+td.getTriangleId(clickInfo.end.x, clickInfo.end.y, SCALE));
+        if( funnel.triangles[ 0 ].positions )fillTriangles( funnel.triangles, document.getElementById( "tmpCanvas" ), SCALE, "rgba(235, 221, 56, 0.5)" );
+        clickInfo = { start:{}, end:{}, first: true };
+        //
+    }
+  })
+})
+
 let polypts = [
   [ [ 10, 10 ],  [ 90, 10 ], //top
     [ 90, 40 ], [ 110, 20 ], [ 115, 45 ], [ 110, 50 ], [ 90, 50 ],
@@ -263,6 +310,12 @@ let polypts = [
   [ [ 88, 43 ], [ 105, 43 ], [ 105, 45 ],[ 88, 46 ] ],
   [[ 50, 50], [ 60, 50], [ 60,60 ], [50, 60 ]]
 ];
+
+
+
+
+
+
 
 /*
 let indices =  td.triangulate( polypts );
@@ -279,12 +332,14 @@ console.log( JSON.stringify( triangulation ) );
 drawTriangulation( triangulation, document.getElementById( "canvas" ), 3 );
 */
 
-
+/* HERE GOOD PART FOR TRIANGULATION SEARCH
 let triangulation = td.clip2triangulate( polypts );
 console.log( JSON.stringify( triangulation ) );
 let SCALE =8;
 drawTriangles( triangulation, document.getElementById( "canvas" ), SCALE );
 drawWidths( triangulation,[ { triIndex: ( Math.floor( Math.random() * triangulation.length ) ), edgeIndex: ( Math.floor( Math.random() * 3 ) ) } ], document.getElementById( "canvas" ), SCALE );
+*/
+
 //drawSectors( td.getSectors(), document.getElementById( "canvas" ), SCALE )
 
 /*
@@ -299,7 +354,6 @@ drawAngle( pt1[ 0 ], pt1[ 1 ], pt2[ 0 ], pt2[ 1 ], pt3[ 0 ], pt3[ 1 ], pt4[ 0 ],
 */
 
 
-console.log( "///////////////// ////// ////////// ///////:" );
 //console.log( JSON.stringify( td.getLevel3Paths() ) );
 //let clip = td.tryClipper( 3 );
 //let clip = td.tryPoly2Tri();
@@ -314,12 +368,10 @@ document.getElementById( "canvas" ).addEventListener( "click", e =>{
 console.log( JSON.stringify( id ) );
 })
 */
+/* HERE MOUSE EVENTS FOR SEARCH
 clickInfo = { start:{}, end:{}, first: true };
 document.getElementById( "canvas" ).addEventListener( "mouseup", e =>{
-  /*
-  let x = Math.round(e.clientX / SCALE),
-      y = Math.round(e.clientY / SCALE );
-  */
+
   let x =  e.clientX,
       y = e.clientY,
       triId = td.getTriangleId(x,y, SCALE);
@@ -347,11 +399,16 @@ document.getElementById( "canvas" ).addEventListener( "mouseup", e =>{
       //
   }
 })
+
+*/
+
+
+/*
 let satPoly1 = [ 0.0, 0.0,    10.0, 0.0,  5.0, 10.0 ],
     satPoly2 = [ 8.0, 0.0,    15.0, 0.0,  15.0, 10.0, 0.0, 10.0 ],
     collide = td.testSAT( satPoly1, satPoly2 );
     console.log( "SAT : " + collide );
-
+*/
 function drawSectors( sectors, _cv, _scale ){
   let nbRow = sectors.sectors.length,
       nbCol = sectors.sectors[ 0 ].length,
@@ -433,11 +490,11 @@ function drawTriangles( _triangulation, _cv, _scale ){
         a = tri.lowerBounds,
         n = tri.nodes;
     ctx.strokeStyle = "red";
-
+/*
     if( a[ 0 ] > -1 ){ ctx.strokeText( a[ 0 ].toFixed(2)+"-"+n[ 0 ], to1x, to1y );  }
     if( a[ 1 ] >  -1 ){ ctx.strokeText( a[ 1 ].toFixed(2)+"-"+n[ 1 ], to2x, to2y );  }
     if( a[ 2 ] >  -1 ){ ctx.strokeText( a[ 2 ].toFixed(2)+"-"+n[ 2 ], to3x, to3y );  }
-
+*/
     ctx.strokeStyle = "black";
 
     let centroid = tri.centroid;
