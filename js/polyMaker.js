@@ -211,6 +211,7 @@ polyMaker.loadFromArray  = e => {
     })
     polyMaker.obstaclesCount++;
   }
+  polyMaker.setArray();
   polyMaker.drawAll();
 }
 

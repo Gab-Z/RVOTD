@@ -260,7 +260,7 @@ const triangulationBut = document.body.appendChild( document.createElement("butt
 triangulationBut.style.position = "absolute";
 triangulationBut.textContent = "triangulate";
 triangulationBut.style.top = 0;
-triangulationBut.style.left = 0;
+triangulationBut.style.left = "920px";
 var clickInfo = { start:{}, end:{}, first: true };
 
 triangulationBut.addEventListener( "click", e => {
@@ -289,7 +289,9 @@ triangulationBut.addEventListener( "click", e => {
 
         let funnel = td.testTRAStarScale( clickInfo.start.x, clickInfo.start.y, clickInfo.end.x, clickInfo.end.y, SCALE );
 
-        console.log( JSON.stringify( funnel ));
+        //console.log( JSON.stringify( funnel ));
+        console.log(  stringIndentifyObject( funnel ));
+
         console.log( "end set at x:"+x+"/y:"+y+"/startId:"+td.getTriangleId(clickInfo.start.x, clickInfo.start.y, SCALE)+"/endId:"+td.getTriangleId(clickInfo.end.x, clickInfo.end.y, SCALE));
         if( funnel.triangles[ 0 ].positions )fillTriangles( funnel.triangles, document.getElementById( "tmpCanvas" ), SCALE, "rgba(235, 221, 56, 0.5)" );
         clickInfo = { start:{}, end:{}, first: true };
@@ -616,4 +618,46 @@ function drawP2T( _arr, _cv, _scale ){
     ctx.closePath();
     ctx.stroke();
   } )
+}
+
+function stringIndentifyObject( ob, _tabLvl ){
+  let str = "";
+  let tabLvl = _tabLvl || 0;
+  let tabStr = "";
+  for( let t = 0; t < tabLvl; t++ ){
+    tabStr += "\t";
+  }
+  tabLvl++;
+  if( Array.isArray( ob ) && !Array.isArray( ob[ 0 ] ) && !isObject( ob[ 0 ] ) ){
+    str += JSON.stringify( ob );
+  }else if( Array.isArray( ob ) && !Array.isArray( ob[ 0 ] ) && isObject( ob[ 0 ] ) ){
+    str += tabStr + "[\n";
+    ob.forEach( arrOb => {
+      str += tabStr + stringIndentifyObject( arrOb, tabLvl );
+    })
+    str += "\n" + tabStr + "]";
+  }else if( Array.isArray( ob ) && Array.isArray( ob[ 0 ] ) ){
+    str += tabStr + "[\n";
+    ob.forEach( arrEl => {
+      str += tabStr + stringIndentifyObject( arrEl, tabLvl );
+    })
+    str += "\n" + tabStr + "]";
+  }else if( !Array.isArray( ob ) && isObject( ob ) ){
+    str += tabStr + "{\n";
+    let oEntries = Object.entries( ob );
+    let l = oEntries.length;
+    oEntries.forEach( ( entry, i ) => {
+      str += tabStr + entry[ 0 ] + " : " + stringIndentifyObject( entry[ 1 ], tabLvl ) + ( i < l - 1 ? "\n" : "");
+    })
+    str += "\n" + tabStr + "}";
+  }else{
+    str += JSON.stringify( ob );
+  }
+  return str;
+}
+function isObject( ob ){
+  for( let k in ob ){
+    if( ob.hasOwnProperty( k ) ) return true;
+  }
+  return false;
 }

@@ -6,6 +6,11 @@
 #include "./SearchNode.h"
 #include <vector>
 #include <memory>
+#include <nan.h>
+
+
+typedef int NanInt;
+typedef float NanFloat;
 
 namespace ETP {
 
@@ -23,6 +28,7 @@ class Triangle {
   int component = -1;
   std::shared_ptr<ETP::Triangle<P,D>> adjacents[ 3 ] = { nullptr, nullptr, nullptr };
   std::shared_ptr<ETP::Triangle<P,D>> connectedNodes[ 3 ] = { nullptr, nullptr, nullptr };
+  int indexesFromConnectedNodes[ 3 ] = { -1, -1, -1 };
   D chokes[ 3 ]  = { (D) 0.0f, (D) 0.0f, (D) 0.0f };
   D widths[ 3 ]  = { (D) 0.0f, (D) 0.0f, (D) 0.0f };
   D lowerBoundDistances[ 3 ]  = { (D) 0.0f, (D) 0.0f, (D) 0.0f };
@@ -170,6 +176,12 @@ public:
   }
   std::shared_ptr<ETP::Triangle<P,D>> getConnectedNode( size_t _i ){
     return connectedNodes[ _i ];
+  }
+  void setIndexfromConnectedNode( size_t _i, int _index ){
+    indexesFromConnectedNodes[ _i ] = _index;
+  }
+  int getIndexfromConnectedNode( size_t _i ){
+    return indexesFromConnectedNodes[ _i ];
   }
   unsigned int getId(){
     return id;
@@ -369,6 +381,16 @@ public:
     }
     return -1;
   }
+  int getConnectedNodeIndex( std::shared_ptr<ETP::Triangle<P,D>> _other, std::shared_ptr<ETP::Edge<P,D>> _otherEdge ){
+    if( _other == nullptr ){ return -1; }
+    int otherLowerBound = _other->getLowerBound( _other->getEdgeIndex( _otherEdge ) );
+    for ( int i = 0; i < 3; i++ ){
+      if( connectedNodes[ i ] == _other && getLowerBound( i ) == otherLowerBound ){
+        return i;
+      }
+    }
+    return -1;
+  }
   int getReversedConnectedNodeIndex( std::shared_ptr<ETP::Triangle<P,D>> _connectedNode ){
     std::shared_ptr<ETP::Triangle<P,D>> otherConnectedNode;
     D lowerBound = getLowerBound( getConnectedNodeIndex(_connectedNode ) );
@@ -501,6 +523,113 @@ public:
     }
     return false;
   }
+
+  v8::Local<v8::Object> toNanObject(){
+    v8::Local<v8::Object> retTri = Nan::New<v8::Object>();
+
+    v8::Local<v8::String> idProp = Nan::New( "id" ).ToLocalChecked();
+    v8::Local<v8::Value> idValue = Nan::New( getId() );
+    retTri->Set( idProp, idValue );
+
+    std::shared_ptr<ETP::Edge<P,D>>& e1 = getEdgeRef( 0 );
+    std::shared_ptr<ETP::Edge<P,D>>& e2 = getEdgeRef( 1 );
+    std::shared_ptr<ETP::Edge<P,D>>& e3 = getEdgeRef( 2 );
+
+    std::vector<P> positions = getPositions();
+
+    v8::Local<v8::Array> posArr = Nan::New<v8::Array>( 6 );
+      posArr->Set( 0, Nan::New( (NanInt) positions[ 0 ] ) );
+      posArr->Set( 1, Nan::New( (NanInt) positions[ 1 ] ) );
+      posArr->Set( 2, Nan::New( (NanInt) positions[ 2 ] ) );
+      posArr->Set( 3, Nan::New( (NanInt) positions[ 3 ] ) );
+      posArr->Set( 4, Nan::New( (NanInt) positions[ 4 ] ) );
+      posArr->Set( 5, Nan::New( (NanInt) positions[ 5 ] ) );
+    v8::Local<v8::String> posProp = Nan::New( "positions" ).ToLocalChecked();
+    retTri->Set( posProp, posArr );
+
+    v8::Local<v8::Array> constrArr = Nan::New<v8::Array>( 3 );
+      constrArr->Set( 0, Nan::New( e1->isConstrained() ) );
+      constrArr->Set( 1, Nan::New( e2->isConstrained() ) );
+      constrArr->Set( 2, Nan::New( e3->isConstrained() ) );
+    v8::Local<v8::String> constrProp = Nan::New( "constrained" ).ToLocalChecked();
+    retTri->Set( constrProp, constrArr );
+
+    v8::Local<v8::Array> adjacentArr = Nan::New<v8::Array>( 3 );
+    std::shared_ptr<ETP::Triangle<P,D>> a1 = triangleOpposite( getEdgeVal( 0 ) );
+    std::shared_ptr<ETP::Triangle<P,D>> a2 = triangleOpposite( getEdgeVal( 1 ) );
+    std::shared_ptr<ETP::Triangle<P,D>> a3 = triangleOpposite( getEdgeVal( 2 ) );
+      adjacentArr->Set( 0, Nan::New( a1 != nullptr ? (int) a1->getId() : -1 ) );
+      adjacentArr->Set( 1, Nan::New( a2 != nullptr ? (int) a2->getId() : -1 ) );
+      adjacentArr->Set( 2, Nan::New( a3 != nullptr ? (int) a3->getId() : -1 ) );
+    v8::Local<v8::String> adjacentProp = Nan::New( "adjacents" ).ToLocalChecked();
+    retTri->Set( adjacentProp, adjacentArr );
+
+    v8::Local<v8::Array> widthsArr = Nan::New<v8::Array>( 3 );
+    widthsArr->Set( 0, Nan::New( (NanFloat) getWidth( 0 ) ) );
+    widthsArr->Set( 1, Nan::New( (NanFloat) getWidth( 1 ) ) );
+    widthsArr->Set( 2, Nan::New( (NanFloat) getWidth( 2 ) ) );
+    v8::Local<v8::String> widthsProp = Nan::New( "widths" ).ToLocalChecked();
+    retTri->Set( widthsProp, widthsArr );
+
+    v8::Local<v8::Array> anglesArr = Nan::New<v8::Array>( 3 );
+    anglesArr->Set( 0, Nan::New( (NanFloat) getAngle( 0 ) ) );
+    anglesArr->Set( 1, Nan::New( (NanFloat) getAngle( 1 ) ) );
+    anglesArr->Set( 2, Nan::New( (NanFloat) getAngle( 2 ) ) );
+    v8::Local<v8::String> anglesProp = Nan::New( "angles" ).ToLocalChecked();
+    retTri->Set( anglesProp, anglesArr );
+
+    v8::Local<v8::Array> lowerBoundsArr = Nan::New<v8::Array>( 3 );
+    lowerBoundsArr->Set( 0, Nan::New( (NanFloat) getLowerBound( 0 ) ) );
+    lowerBoundsArr->Set( 1, Nan::New( (NanFloat) getLowerBound( 1 ) ) );
+    lowerBoundsArr->Set( 2, Nan::New( (NanFloat) getLowerBound( 2 ) ) );
+    v8::Local<v8::String> lowerBoundsProp = Nan::New( "lowerBounds" ).ToLocalChecked();
+    retTri->Set( lowerBoundsProp, lowerBoundsArr );
+
+    v8::Local<v8::String> lvlProp = Nan::New( "level" ).ToLocalChecked();
+    v8::Local<v8::Value> lvlVal = Nan::New( getLevel() );
+    retTri->Set( lvlProp, lvlVal );
+
+    v8::Local<v8::String> componentProp = Nan::New( "component" ).ToLocalChecked();
+    v8::Local<v8::Value> componentVal = Nan::New( getComponent() );
+    retTri->Set( componentProp, componentVal );
+
+    v8::Local<v8::Array> nodesArr = Nan::New<v8::Array>( 3 );
+    std::shared_ptr<ETP::Triangle<P,D>> n1 = getConnectedNode( 0 );
+    std::shared_ptr<ETP::Triangle<P,D>> n2 = getConnectedNode( 1 );
+    std::shared_ptr<ETP::Triangle<P,D>> n3 = getConnectedNode( 2 );
+      nodesArr->Set( 0, Nan::New( n1 != nullptr ? (int) n1->getId() : -1 ) );
+      nodesArr->Set( 1, Nan::New( n2 != nullptr ? (int) n2->getId() : -1 ) );
+      nodesArr->Set( 2, Nan::New( n3 != nullptr ? (int) n3->getId() : -1 ) );
+    v8::Local<v8::String> nodesProp = Nan::New( "nodes" ).ToLocalChecked();
+    retTri->Set( nodesProp, nodesArr );
+
+    v8::Local<v8::Array> indexesFromNodesArr = Nan::New<v8::Array>( 3 );
+    int nid1 = getIndexfromConnectedNode( 0 );
+    int nid2 = getIndexfromConnectedNode( 1 );
+    int nid3 = getIndexfromConnectedNode( 2 );
+      indexesFromNodesArr->Set( 0, Nan::New( nid1 ) );
+      indexesFromNodesArr->Set( 1, Nan::New( nid2 ) );
+      indexesFromNodesArr->Set( 2, Nan::New( nid3 ) );
+    v8::Local<v8::String> indexesFromNodesProp = Nan::New( "indexesFromConnectedNodes" ).ToLocalChecked();
+    retTri->Set( indexesFromNodesProp, indexesFromNodesArr );
+
+
+    v8::Local<v8::String> centroidProp = Nan::New( "centroid" ).ToLocalChecked();
+    v8::Local<v8::Object> centroidOb = Nan::New<v8::Object>();
+    v8::Local<v8::String> xProp = Nan::New( "x" ).ToLocalChecked();
+    v8::Local<v8::String> yProp = Nan::New( "y" ).ToLocalChecked();
+    ETP::Point<D,D> centroid = getCentroid();
+    centroidOb->Set( xProp, Nan::New( centroid.x ) );
+    centroidOb->Set( yProp, Nan::New( centroid.y ) );
+    retTri->Set( centroidProp, centroidOb );
+
+
+
+    return retTri;
+  }
+
+
+
 
 };// end of Class
 
