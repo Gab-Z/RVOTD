@@ -1666,7 +1666,7 @@ public:
   std::vector<std::shared_ptr<ETP::Triangle<P,D>>> searchInsideLvl2CorridorTEST( ETP::Point<P,D> _startPoint, ETP::Point<P,D> _goalPoint, std::shared_ptr<ETP::Triangle<P,D>> _startTri, std::shared_ptr<ETP::Triangle<P,D>> _goalTri, D _radius, D _scale ){
 
   }
-  std::vector<std::shared_ptr<ETP::Triangle<P,D>>> searchInsideLvl2Corridor( ETP::Point<P,D> _startPoint, ETP::Point<P,D> _goalPoint, std::shared_ptr<ETP::Triangle<P,D>> _startTri, std::shared_ptr<ETP::Triangle<P,D>> _goalTri, D _radius, D _scale ){
+  std::vector<std::shared_ptr<ETP::Triangle<P,D>>> searchInsideLvl2Corridor ( ETP::Point<P,D> _startPoint, ETP::Point<P,D> _goalPoint, std::shared_ptr<ETP::Triangle<P,D>> _startTri, std::shared_ptr<ETP::Triangle<P,D>> _goalTri, D _radius, D _scale ){
     std::shared_ptr<ETP::Triangle<P,D>> endPoint = nullptr;
     std::shared_ptr<ETP::Triangle<P,D>> otherEndPoint;
     D sDist;
