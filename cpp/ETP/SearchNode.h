@@ -30,8 +30,10 @@ struct searchEndPoint{
 
   std::shared_ptr<ETP::Triangle<P,D>> triangle;
   D gValue = 0.0;
+  D gValueToSearchStart = 0.0;
   std::shared_ptr<ETP::searchEndPoint<P,D>> parent;
   int parentIndex;
+  std::shared_ptr<ETP::Edge<P,D>> entryEdge = nullptr;
 
   searchEndPoint(){};
   searchEndPoint( D _gValue, std::shared_ptr<ETP::Triangle<P,D>> _triangle ): gValue( _gValue ), triangle( _triangle ){
@@ -39,6 +41,7 @@ struct searchEndPoint{
   };
   searchEndPoint( D _gValue, std::shared_ptr<ETP::Triangle<P,D>> _triangle, std::shared_ptr<ETP::searchEndPoint<P,D>> _parent ): gValue( _gValue ), triangle( _triangle ), parent( _parent ){};
   searchEndPoint( D _gValue, std::shared_ptr<ETP::Triangle<P,D>> _triangle, std::shared_ptr<ETP::searchEndPoint<P,D>> _parent, int _parentIndex ): gValue( _gValue ), triangle( _triangle ), parent( _parent ), parentIndex( _parentIndex ){};
+  searchEndPoint( D _gValue, std::shared_ptr<ETP::Triangle<P,D>> _triangle, std::shared_ptr<ETP::searchEndPoint<P,D>> _parent, int _parentIndex, D _gValueToSearchStart ): gValue( _gValue ), triangle( _triangle ), parent( _parent ), parentIndex( _parentIndex ), gValueToSearchStart( _gValueToSearchStart ){};
   ~searchEndPoint(){};
 
 };//end of class
@@ -60,6 +63,38 @@ class UsedList{
     }
 
 };//end of class
+
+template <typename P, typename D>
+struct searchResult{
+  std::shared_ptr<ETP::UsedList<P,D>> usedList;
+  std::shared_ptr<ETP::searchEndPoint<P,D>> goalEndPoint;
+  searchResult(){};
+  searchResult( std::shared_ptr<ETP::searchEndPoint<P,D>> _goalEndPoint, std::shared_ptr<ETP::UsedList<P,D>> _usedList ): goalEndPoint( _goalEndPoint ), usedList( _usedList ){};
+  std::vector<std::shared_ptr<ETP::Triangle<P,D>>> getFunnel(){
+    std::vector<std::shared_ptr<ETP::Triangle<P,D>>> ret;
+    if( goalEndPoint == nullptr ) return ret;
+    std::shared_ptr<ETP::Triangle<P,D>> tCurrent = goalEndPoint->triangle;
+    //std::shared_ptr<ETP::SearchNode<P,D>> searchNodeCurrent = goalEndPoint->triangle->getSearchNode();
+    for(;;){
+      ret.insert( ret.begin(), tCurrent );
+      std::shared_ptr<ETP::SearchNode<P,D>> snCurrent = tCurrent->getSearchNode();
+      if( snCurrent == nullptr ) break;
+      std::shared_ptr<ETP::Triangle<P,D>> tComeFrom = snCurrent->comeFrom;
+      if( tComeFrom == nullptr ) break;
+      std::shared_ptr<ETP::Triangle<P,D>> intermediateNode = tCurrent->getAdjacentVal( snCurrent->comeFromIdx );
+      if( intermediateNode != tComeFrom ){
+        for(;;){
+          ret.insert( ret.begin(), intermediateNode );
+          std::shared_ptr<ETP::Triangle<P,D>> nextNode = intermediateNode->getAdjacentVal( intermediateNode->getConnectedNodeIndex( tComeFrom ) );
+          if( nextNode == tComeFrom ) break;
+          intermediateNode = nextNode;
+        }
+      }
+      tCurrent = tComeFrom;
+    }
+    return ret;
+  }
+};// end of struct
 
 }// end of namespace
 
