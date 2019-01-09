@@ -183,6 +183,12 @@ public:
   int getIndexfromConnectedNode( size_t _i ){
     return indexesFromConnectedNodes[ _i ];
   }
+  int getIndexWithConnectedNodeIdx( size_t _idxfromConnectedNode,  std::shared_ptr<ETP::Triangle<P,D>> _connectedNode ){
+    for( int i = 0; i < 3; i++ ){
+      if( connectedNodes[ i ] == _connectedNode && indexesFromConnectedNodes[ i ] == _idxfromConnectedNode ) return i;
+    }
+    return -1;
+  }
   unsigned int getId(){
     return id;
   }
@@ -501,24 +507,28 @@ public:
   bool haveSameLvl2CorridorEndpoints( std::shared_ptr<ETP::Triangle<P,D>> _other ){
     if( level != 2 || _other->getLevel() != 2 ){ return false; }
     std::shared_ptr<ETP::Triangle<P,D>> endPoint1 = nullptr;
+    int ep1ToTriIdx;
     std::shared_ptr<ETP::Triangle<P,D>> endPoint2 = nullptr;
+    int ep2ToTriIdx;
     std::shared_ptr<ETP::Triangle<P,D>> o_endPoint1 = nullptr;
+    int o_ep1ToTriIdx;
     std::shared_ptr<ETP::Triangle<P,D>> o_endPoint2 = nullptr;
+    int o_ep2ToTriIdx;
     for( int i = 0; i < 3; i++ ){
       std::shared_ptr<ETP::Triangle<P,D>> cn = connectedNodes[ i ];
       if( cn != nullptr ){
-        if( endPoint1 == nullptr ){ endPoint1 = cn; }
+        if( endPoint1 == nullptr ){ endPoint1 = cn; ep1ToTriIdx = getIndexfromConnectedNode( i ); }
         else if( cn == endPoint1 ){ return false; }
-        else{ endPoint2 = cn; }
+        else{ endPoint2 = cn; ep2ToTriIdx = getIndexfromConnectedNode( i ); }
       }
       std::shared_ptr<ETP::Triangle<P,D>> cn2 = _other->getConnectedNode( i );
       if( cn2 != nullptr ){
-        if( o_endPoint1 == nullptr ){ o_endPoint1 = cn2; }
+        if( o_endPoint1 == nullptr ){ o_endPoint1 = cn2; o_ep1ToTriIdx = _other->getIndexfromConnectedNode( i ); }
         else if( cn2 == o_endPoint1 ){ return false; }
-        else{ o_endPoint2 = cn2; }
+        else{ o_endPoint2 = cn2; o_ep2ToTriIdx = _other->getIndexfromConnectedNode( i ); }
       }
     }
-    if( ( endPoint1 == o_endPoint1 && endPoint2 == o_endPoint2 ) || ( endPoint1 == o_endPoint2 && endPoint2 == o_endPoint1 ) ){
+    if( ( endPoint1 == o_endPoint1 && endPoint2 == o_endPoint2 && ep1ToTriIdx == o_ep1ToTriIdx && ep2ToTriIdx == o_ep2ToTriIdx ) || ( endPoint1 == o_endPoint2 && endPoint2 == o_endPoint1 && ep1ToTriIdx == o_ep2ToTriIdx && ep2ToTriIdx == o_ep1ToTriIdx ) ){
       return true;
     }
     return false;

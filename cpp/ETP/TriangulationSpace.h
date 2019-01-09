@@ -1121,11 +1121,12 @@ public:
         if( startRoot->isPartoflvl2Ring() || startRoot->isOnSameLvl2Loop( goalRoot ) ){// inside a loop or ring
           proceed = true;
           //return std::vector<std::shared_ptr<ETP::Triangle<P,D>>>{ triangles[ 0 ] };
-          bodySearch =  searchInsideLvl2RingOrLoop( _startPoint, _goalPoint, _startTri, _goalTri, _radius, _scale );
+          //bodySearch =  searchInsideLvl2RingOrLoop( _startPoint, _goalPoint, _startTri, _goalTri, _radius, _scale );
+          return searchInsideLvl2RingOrLoop( _startPoint, _goalPoint, _startTri, _goalTri, _radius, _scale );
         }else if( startRoot->haveSameLvl2CorridorEndpoints( goalRoot )){// inside a corridor
           //return std::vector<std::shared_ptr<ETP::Triangle<P,D>>>{ _startTri, _goalTri };
           //return std::vector<std::shared_ptr<ETP::Triangle<P,D>>>{ triangles[ 0 ] };
-          bodySearch = searchInsideLvl2Corridor( _startPoint, _goalPoint, startRoot, goalRoot, _radius, _scale );
+          bodySearch = searchInsideLvl2Corridor( _startPoint, _goalPoint, _startTri, _goalTri, _radius, _scale );
           return bodySearch;
           if( bodySearch.empty() == false ){
             proceed = true;
@@ -1163,18 +1164,124 @@ public:
       }
     }
     // perform classic Triangulation Reduction A*
-
+    //return std::vector<std::shared_ptr<ETP::Triangle<P,D>>>{ _startTri, _goalTri };
     //tmp
     //return searchClassic( _startPoint, _goalPoint, _startTri, _goalTri, _radius, _scale );
-    ETP::searchResult<P,D> classicSearch = searchBetweenLvl3EndPoints( _startPoint, _goalPoint, std::make_shared<ETP::searchEndPoint<P,D>>( 0.0, _startTri, nullptr ),  std::vector<std::shared_ptr<ETP::searchEndPoint<P,D>>>{ std::make_shared<ETP::searchEndPoint<P,D>>( 0.0, _goalTri, nullptr ) }, std::numeric_limits<D>::infinity(), _radius, _scale );
-    return classicSearch.getFunnel();
-
+    std::shared_ptr<ETP::UsedList<P,D>> usedList = std::make_shared<ETP::UsedList<P,D>>();
+    std::vector<std::shared_ptr<ETP::searchEndPoint<P,D>>> startEndPoints = getTriangleEndPoints( _startTri, _startPoint, _radius, _scale );
+    std::vector<std::shared_ptr<ETP::searchEndPoint<P,D>>> goalEndPoints = getTriangleEndPoints( _goalTri, _goalPoint, _radius, _scale );
+    D maxGVal = std::numeric_limits<D>::infinity();
+    ETP::searchResult<P,D> searchResult;
+    bool firstSearch = true;
+    D memSearchGVal;
+    std::shared_ptr<ETP::searchEndPoint<P,D>> memStartEndPt;
+    for( std::shared_ptr<ETP::searchEndPoint<P,D>> startEndPt : startEndPoints ){
+      ETP::searchResult<P,D> classicSearch = searchBetweenLvl3EndPoints( _startPoint, _goalPoint, startEndPt,  goalEndPoints, maxGVal, _radius, _scale, usedList );
+      if( classicSearch.goalEndPoint != nullptr ){
+        maxGVal = classicSearch.goalEndPoint->gValueToSearchStart + _goalTri->getSearchNode()->gValue + startEndPt->gValueToSearchStart;
+        if( firstSearch == true || maxGVal < memSearchGVal ){
+          searchResult = classicSearch;
+          memSearchGVal = maxGVal;
+          memStartEndPt = startEndPt;
+        }
+      }
+    }
+    setSearchNodesFromEndPoint( memStartEndPt, usedList, false );
+    setSearchNodesFromEndPoint( searchResult.goalEndPoint, usedList, true );
+    //ETP::searchResult<P,D> classicSearch = searchBetweenLvl3EndPoints( _startPoint, _goalPoint, std::make_shared<ETP::searchEndPoint<P,D>>( 0.0, _startTri, nullptr ),  std::vector<std::shared_ptr<ETP::searchEndPoint<P,D>>>{ std::make_shared<ETP::searchEndPoint<P,D>>( 0.0, _goalTri, nullptr ) }, std::numeric_limits<D>::infinity(), _radius, _scale, usedList );
+    //return classicSearch.getFunnel();
+    return getFunnel( _goalTri );
 
   }
-  ETP::searchResult<P,D> searchBetweenLvl3EndPoints( ETP::Point<P,D> _startPoint, ETP::Point<P,D> _goalPoint, std::shared_ptr<ETP::searchEndPoint<P,D>> _startEndPoint, std::vector<std::shared_ptr<ETP::searchEndPoint<P,D>>> _goalEndPoints, D _maxGValue, D _radius, D _scale ){
+
+  ETP::searchResult<P,D> searchBetweenLvl3EndPoints( ETP::Point<P,D> _startPoint, ETP::Point<P,D> _goalPoint, std::vector<std::shared_ptr<ETP::Triangle<P,D>>> _startPoints, std::vector<std::shared_ptr<ETP::searchEndPoint<P,D>>> _goalEndPoints, D _maxGValue, D _radius, D _scale, std::shared_ptr<ETP::UsedList<P,D>> usedList ){
+    std::vector<std::shared_ptr<ETP::Triangle<P,D>>> openList;
+    for( std::shared_ptr<ETP::Triangle<P,D>> startTri : _startPoints ){
+      insertInOpenList( startTri->getSearchNode()->hValue, startTri, openList );
+    }
+    std::shared_ptr<ETP::searchEndPoint<P,D>> closestEndPoint = nullptr;
+    while( openList.empty() == false ){
+      std::shared_ptr<ETP::Triangle<P,D>> tCurrent = openList.front();
+      openList.erase( openList.begin() );
+      std::shared_ptr<ETP::SearchNode<P,D>> searchNodeCurrent = tCurrent->getSearchNode();
+      D tCGVal = searchNodeCurrent->gValue;
+      bool endPointFound = false;
+      D memLomerGValue;
+      for( int i = 0; i < 3; i++ ){
+        std::shared_ptr<ETP::Triangle<P,D>> tNeighbour = tCurrent->getConnectedNode( i );
+        std::shared_ptr<ETP::Edge<P,D>> tCurrentOuterEdge = tCurrent->getEdgeVal( i );
+        if( tNeighbour == nullptr || searchNodeCurrent->comeFromIdx == i ){ continue; }
+        int neighbourToCurrentIdx = tCurrent->getIndexfromConnectedNode( i );
+        std::shared_ptr<ETP::Edge<P,D>> neighbEntryEdge = tNeighbour->getEdgeVal( neighbourToCurrentIdx );
+        D startToClosestEdgeDist = neighbEntryEdge->minimumDistance( _startPoint, _scale ) / _scale;
+        D tCurrentToNeighbLowerBound = tCGVal + tCurrent->getLowerBound( i ) * _radius;
+
+        D hVal = neighbEntryEdge->minimumDistance( _goalPoint, _scale ) / _scale;
+        D hValDiff = tCGVal + searchNodeCurrent->hValue - hVal;
+
+        if( searchNodeCurrent->comeFrom == nullptr ){
+          tCurrentToNeighbLowerBound += getPointToEdgeLowerBound(  _startPoint, tCurrentOuterEdge, _radius, _scale );
+        }else if( tCurrent->getLevel() == 3 ){
+          tCurrentToNeighbLowerBound += tCurrent->getAngle( tCurrent->getEdgeVal( searchNodeCurrent->comeFromIdx ), tCurrentOuterEdge ) * _radius;
+        }
+
+        D gVal = std::max( hValDiff, std::max( startToClosestEdgeDist, tCurrentToNeighbLowerBound ) );
+
+        if( gVal >= _maxGValue || ( endPointFound == true && gVal >= memLomerGValue ) ){ continue; }
+        bool neighbIsEndPoint = false;
+        D gValToGoal = 0.0;
+        std::shared_ptr<ETP::searchEndPoint<P,D>> goalEndPt;
+        for( std::shared_ptr<ETP::searchEndPoint<P,D>> gEndPt : _goalEndPoints ){
+          if( gEndPt->triangle == tNeighbour ){
+            neighbIsEndPoint = true;
+            gVal += ( gEndPt->entryEdge != nullptr ? tNeighbour->getAngle( neighbEntryEdge, gEndPt->entryEdge ) * _radius : getPointToEdgeLowerBound( _goalPoint, neighbEntryEdge, _radius, _scale ) );
+            gValToGoal = gVal + gEndPt->gValueToSearchStart;
+            if( endPointFound == false || gEndPt->gValue > gVal ){
+              gEndPt->gValue = gVal;
+              openList.erase( std::remove_if( openList.begin(), openList.end(),
+                [ gVal ]( std::shared_ptr<ETP::Triangle<P,D>> _t ){
+                    if ( _t->getSearchNode()->gValue >= gVal ) {
+                        return true;
+                    }
+                    return false;
+                }
+              ), openList.end() );
+            }
+            endPointFound = true;
+            memLomerGValue = gVal;
+            goalEndPt = gEndPt;
+            break;
+          }// end of if( gEndPt->triangle == tNeighbour )
+        }// end of for( std::shared_ptr<ETP::searchEndPoint<P,D>> gEndPt : _goalEndPoints )
+        std::shared_ptr<ETP::SearchNode<P,D>> tNeighbSearchNode = tNeighbour->getSearchNode();
+        if( gValToGoal >= _maxGValue ) continue;
+        if( tNeighbSearchNode == nullptr ){
+          setTriangleSearchNode( tNeighbour, ETP::SearchNode<P,D>( hVal, gVal, tCurrent, neighbourToCurrentIdx ), usedList );
+          if( neighbIsEndPoint == false ){
+            insertInOpenList( hVal, tNeighbour, openList );
+          }else if( closestEndPoint == nullptr || gVal < closestEndPoint->gValue ){
+            closestEndPoint = goalEndPt;
+            closestEndPoint->gValue = gVal;
+          }
+        }else if( tNeighbSearchNode->gValue > gVal ){
+          setTriangleSearchNode( tNeighbour, ETP::SearchNode<P,D>( hVal, gVal, tCurrent, neighbourToCurrentIdx ), usedList );
+          if( neighbIsEndPoint == false ){
+            removeFromOpenList( tNeighbour, openList );
+            insertInOpenList( hVal, tNeighbour, openList );
+          }else if( closestEndPoint == nullptr || gVal < closestEndPoint->gValue ){
+            closestEndPoint = goalEndPt;
+            closestEndPoint->gValue = gVal;
+          }
+        }
+      }
+    }
+    return searchResult<P,D>( closestEndPoint, usedList );
+  }
+
+  ETP::searchResult<P,D> searchBetweenLvl3EndPoints( ETP::Point<P,D> _startPoint, ETP::Point<P,D> _goalPoint, std::shared_ptr<ETP::searchEndPoint<P,D>> _startEndPoint, std::vector<std::shared_ptr<ETP::searchEndPoint<P,D>>> _goalEndPoints, D _maxGValue, D _radius, D _scale, std::shared_ptr<ETP::UsedList<P,D>> usedList ){
     std::vector<std::shared_ptr<ETP::Triangle<P,D>>> openList;
     //ETP::UsedList<P,D> usedList = ETP::UsedList<P,D>();
-    std::shared_ptr<ETP::UsedList<P,D>> usedList = std::make_shared<ETP::UsedList<P,D>>();
+    //std::shared_ptr<ETP::UsedList<P,D>> usedList = std::make_shared<ETP::UsedList<P,D>>();
     std::shared_ptr<ETP::Triangle<P,D>> startTri = _startEndPoint->triangle;
     setTriangleSearchNode( startTri, ETP::SearchNode<P,D>( 0.0, 0.0, nullptr ), usedList );
     openList.push_back( startTri );
@@ -1563,6 +1670,76 @@ public:
   }
 
   std::vector<std::shared_ptr<ETP::Triangle<P,D>>> searchInsideLvl2RingOrLoop( ETP::Point<P,D> _startPoint, ETP::Point<P,D> _goalPoint, std::shared_ptr<ETP::Triangle<P,D>> _startTri, std::shared_ptr<ETP::Triangle<P,D>> _goalTri, D _radius, D _scale ){
+    std::shared_ptr<ETP::UsedList<P,D>> usedList = std::make_shared<ETP::UsedList<P,D>>();
+    D memGValue;
+    std::shared_ptr<ETP::Triangle<P,D>> tCurrent = _startTri;
+    if( _startTri->getLevel() == 1 ){
+      std::shared_ptr<ETP::Triangle<P,D>> lvl2Root = _startTri->getLvl1RootNode();
+      int startToLvl2Idx = _startTri->getConnectedNodeIndex( lvl2Root );
+      //memGValue += getPointToEdgeLowerBound( _startPoint, _startTri->getEdgeVal( startToLvl2Idx ), _radius, _scale ) + _startTri->getLowerBound( startToLvl2Idx ) * radius;
+      setTriangleSearchNode( lvl2Root, ETP::SearchNode<P,D>( 0.0, getPointToEdgeLowerBound( _startPoint, _startTri->getEdgeVal( startToLvl2Idx ), _radius, _scale ) + _startTri->getLowerBound( startToLvl2Idx ) * _radius, tCurrent, tCurrent->getIndexfromConnectedNode( startToLvl2Idx ) ), usedList );
+      tCurrent = lvl2Root;
+    }else{
+      setTriangleSearchNode( _startTri, ETP::SearchNode<P,D>( 0.0, 0.0, nullptr ), usedList );
+    }
+    bool endIsLvl1;
+    std::shared_ptr<ETP::Triangle<P,D>> lvl2EndPt;
+    std::shared_ptr<ETP::Edge<P,D>> lv2EndEntry;
+    D lvl1EndToRootLowerBound;
+    if( _goalTri->getLevel() == 1 ){
+      endIsLvl1 = true;
+      lvl2EndPt = _goalTri->getLvl1RootNode();
+      int idxToRoot = _goalTri->getConnectedNodeIndex( lvl2EndPt );
+      int idxRootToEnd = _goalTri->getIndexfromConnectedNode( idxToRoot );
+      std::shared_ptr<ETP::Edge<P,D>> lv2EndEntry = lvl2EndPt->getEdgeVal( idxRootToEnd );
+      lvl1EndToRootLowerBound = _goalTri->getLowerBound( idxToRoot ) * _radius;
+      setTriangleSearchNode( _goalTri, ETP::SearchNode<P,D>( 0.0, 0.0, lvl2EndPt, idxRootToEnd ), usedList );
+    }else{
+      endIsLvl1 = false;
+      lvl2EndPt = _goalTri;
+    }
+    ETP::Point<D,D> goalPoint =  ETP::Point<D,D>( (D) _goalPoint.x, (D) _goalPoint.y );
+    std::vector<std::shared_ptr<ETP::Triangle<P,D>>> openList;
+    openList.push_back( tCurrent );
+    bool goalReached = false;
+    while( openList.empty() == false ){
+      std::shared_ptr<ETP::Triangle<P,D>> tCurrent = openList.front();
+      openList.erase( openList.begin() );
+      ETP::SearchNode<P,D> snCurrent = *tCurrent->getSearchNode().get();
+      int currentLvl = tCurrent->getLevel();
+      for( int i = 0; i < 3; i++ ){
+        if( currentLvl == 3 && tCurrent->getConnectedNode( i ) != tCurrent ){ continue; }
+        std::shared_ptr<ETP::Triangle<P,D>> tNeighbour = tCurrent->getAdjacentVal( i );
+        if( tNeighbour == nullptr || tNeighbour->getLevel() < 2 || tNeighbour->getSearchNode() != nullptr ){ continue; }
+        D neighbGValue = snCurrent.gValue + tCurrent->getAngle( tCurrent->getEdgeVal( snCurrent.comeFromIdx ), tCurrent->getEdgeVal( i ) ) * _radius;
+        if( goalReached == true && neighbGValue >= memGValue ){
+          return getFunnel( _goalTri );
+        }else if( tNeighbour == lvl2EndPt ){
+          D gValToGoal = neighbGValue;
+          if( endIsLvl1 ){
+            gValToGoal += tNeighbour->getAngle( tNeighbour->getEdgeVal( tNeighbour->getAdjacentIndex( tCurrent ) ), lv2EndEntry ) * _radius + lvl1EndToRootLowerBound;
+          }else{
+            gValToGoal += getPointToEdgeLowerBound( _goalPoint, tNeighbour->getEdgeVal( tNeighbour->getAdjacentIndex( tCurrent ) ), _radius, _scale );
+          }
+          if( goalReached == false ){
+            memGValue = gValToGoal;
+            setTriangleSearchNode( tNeighbour, ETP::SearchNode<P,D>( 0.0, memGValue, tCurrent ), usedList );
+            goalReached = true;
+          }else if( gValToGoal < memGValue ){
+            setTriangleSearchNode( tNeighbour, ETP::SearchNode<P,D>( 0.0, gValToGoal, tCurrent ), usedList );
+            return getFunnel( _goalTri );
+          }
+        }else{
+          D neighbHValue = tNeighbour->getCentroid().dist( goalPoint );
+          setTriangleSearchNode( tNeighbour, ETP::SearchNode<P,D>( neighbHValue, neighbGValue, tCurrent ), usedList );
+          insertInOpenList( neighbHValue, tNeighbour, openList );
+        }
+      }
+    }
+    return getFunnel( _goalTri );
+  }
+
+  std::vector<std::shared_ptr<ETP::Triangle<P,D>>> searchInsideLvl2RingOrLoopBACKUP2( ETP::Point<P,D> _startPoint, ETP::Point<P,D> _goalPoint, std::shared_ptr<ETP::Triangle<P,D>> _startTri, std::shared_ptr<ETP::Triangle<P,D>> _goalTri, D _radius, D _scale ){
     std::vector<std::shared_ptr<ETP::Triangle<P,D>>> openList;
     //ETP::UsedList<P,D> usedList = ETP::UsedList<P,D>();
     std::shared_ptr<ETP::UsedList<P,D>> usedList = std::make_shared<ETP::UsedList<P,D>>();
@@ -1587,6 +1764,7 @@ public:
         D neighbGValue = snCurrent.gValue + distToNeighbour;
         if( goalReached == true && neighbGValue >= memGValue ){
           return getFunnel( _goalTri );
+          return std::vector<std::shared_ptr<ETP::Triangle<P,D>>>{ triangles[ 0 ] };
         }else if( tNeighbour == _goalTri ){
           if( goalReached == false || neighbGValue < memGValue ){
             memGValue = neighbGValue;
@@ -1663,10 +1841,589 @@ public:
     }
   }
 
-  std::vector<std::shared_ptr<ETP::Triangle<P,D>>> searchInsideLvl2CorridorTEST( ETP::Point<P,D> _startPoint, ETP::Point<P,D> _goalPoint, std::shared_ptr<ETP::Triangle<P,D>> _startTri, std::shared_ptr<ETP::Triangle<P,D>> _goalTri, D _radius, D _scale ){
+
+  std::vector<std::shared_ptr<ETP::Triangle<P,D>>> searchInsideLvl2Corridor( ETP::Point<P,D> _startPoint, ETP::Point<P,D> _goalPoint, std::shared_ptr<ETP::Triangle<P,D>> _startTri, std::shared_ptr<ETP::Triangle<P,D>> _goalTri, D _radius, D _scale ){
+    std::shared_ptr<ETP::UsedList<P,D>> usedList = std::make_shared<ETP::UsedList<P,D>>();
+    std::shared_ptr<ETP::Triangle<P,D>> startLvl2,
+                                        goalLvl2,
+                                        startLvl3,
+                                        goalLvl3;
+    std::shared_ptr<ETP::Edge<P,D>> startLvl1ToLvl2Edge, startLvl2ToLvl1Edge, startLvl2ToStartLvl3Edge, startLvl2ToGoalLvl3Edge,
+                                    goalLvl1ToLvl2Edge, goalLvl2ToLvl1Edge, goalLvl2ToStartLvl3Edge, goalLvl2ToGoalLvl3Edge,
+                                    startLvl3ToCorridorEdge,
+                                    goalLvl3ToCorridorEdge;
+    int lvl1StartToLvl2Idx, lvl2ToLvl1StartIdx,
+        lvl2StartToLvl3StartIdx, lvl2StartToLvl3GoalIdx,
+        lvl1GoalToLvl2Idx, lvl2ToLvl1GoalIdx,
+        lvl2GoalToLvl3StartIdx, lvl2GoalToLvl3GoalIdx;
+    if( _startTri->getLevel() == 1 ){
+      startLvl2 = _startTri->getLvl1RootNode();
+      lvl1StartToLvl2Idx = _startTri->getConnectedNodeIndex( startLvl2 );
+      lvl2ToLvl1StartIdx = _startTri->getIndexfromConnectedNode( lvl1StartToLvl2Idx );
+      startLvl1ToLvl2Edge = _startTri->getEdgeVal( lvl1StartToLvl2Idx );
+      startLvl2ToLvl1Edge = startLvl2->getEdgeVal( lvl2ToLvl1StartIdx );
+      D hVal =  startLvl2ToLvl1Edge->minimumDistance( _goalPoint, _scale ) / _scale;
+      D hValDiff = _startPoint.dist( _goalPoint ) / _scale - hVal;
+      D dist = startLvl2ToLvl1Edge->minimumDistance( _startPoint, _scale ) / _scale;
+      D lowerBound = getPointToEdgeLowerBound( _startPoint, startLvl1ToLvl2Edge, _radius, _scale ) + _startTri->getLowerBound( lvl1StartToLvl2Idx ) * _radius;
+      D gVal = std::max( hValDiff, std::max( dist, lowerBound ) );
+      setTriangleSearchNode( startLvl2, ETP::SearchNode<P,D>( hVal, gVal, _startTri ), usedList );
+    }else{
+      startLvl2 = _startTri;
+      startLvl2ToLvl1Edge = nullptr;
+    }
+    if( _goalTri->getLevel() == 1 ){
+      goalLvl2 = _goalTri->getLvl1RootNode();
+      lvl1GoalToLvl2Idx = _goalTri->getConnectedNodeIndex( goalLvl2 );
+      lvl2ToLvl1GoalIdx = _goalTri->getIndexfromConnectedNode( lvl1GoalToLvl2Idx );
+      goalLvl1ToLvl2Edge = _goalTri->getEdgeVal( lvl1GoalToLvl2Idx );
+      goalLvl2ToLvl1Edge = goalLvl2->getEdgeVal( lvl2ToLvl1GoalIdx );
+    }else{
+      goalLvl2 = _goalTri;
+      goalLvl2ToLvl1Edge = nullptr;
+    }
+    std::shared_ptr<ETP::Triangle<P,D>> lvl3_1 = nullptr;
+    std::shared_ptr<ETP::Triangle<P,D>> lvl3_2;
+    for( int i = 0; i < 3; i++ ){
+      std::shared_ptr<ETP::Triangle<P,D>> lv3ConnectedNode = startLvl2->getConnectedNode( i );
+      if( lv3ConnectedNode == nullptr ) continue;
+      if( lvl3_1 == nullptr ){
+        lvl3_1 = lv3ConnectedNode;
+      }else{
+        lvl3_2 = lv3ConnectedNode;
+        break;
+      }
+    }
+    if( startLvl2->getLowerBound( startLvl2->getConnectedNodeIndex( lvl3_1 ) ) > goalLvl2->getLowerBound( goalLvl2->getConnectedNodeIndex( lvl3_1 ) ) ){
+      goalLvl3 = lvl3_1;
+      startLvl3 = lvl3_2;
+    }else{
+      goalLvl3 = lvl3_2;
+      startLvl3 = lvl3_1;
+    }
+
+    lvl2StartToLvl3StartIdx = startLvl2->getConnectedNodeIndex( startLvl3 );
+    lvl2StartToLvl3GoalIdx = startLvl2->getConnectedNodeIndex( goalLvl3 );
+    lvl2GoalToLvl3StartIdx = goalLvl2->getConnectedNodeIndex( startLvl3 );
+    lvl2GoalToLvl3GoalIdx = goalLvl2->getConnectedNodeIndex( goalLvl3 );
+
+    startLvl2ToStartLvl3Edge = startLvl2->getEdgeVal( lvl2StartToLvl3StartIdx );
+    startLvl2ToGoalLvl3Edge = startLvl2->getEdgeVal( lvl2StartToLvl3GoalIdx );
+    goalLvl2ToStartLvl3Edge = goalLvl2->getEdgeVal( lvl2GoalToLvl3StartIdx );
+    goalLvl2ToGoalLvl3Edge = goalLvl2->getEdgeVal( lvl2GoalToLvl3GoalIdx );
+    startLvl3ToCorridorEdge = startLvl3->getEdgeVal( startLvl2->getIndexfromConnectedNode( lvl2StartToLvl3StartIdx ) );
+    goalLvl3ToCorridorEdge = goalLvl3->getEdgeVal( startLvl2->getIndexfromConnectedNode( lvl2StartToLvl3GoalIdx ) );
+
+    std::shared_ptr<ETP::Triangle<P,D>> tCurrent = startLvl2;
+    std::shared_ptr<ETP::Edge<P,D>> edgeIn = startLvl2ToLvl1Edge;
+    D memGValue = 0.0;
+    for(;;){
+      if( tCurrent == goalLvl2 ) break;
+      int idxToNeighb = tCurrent->getConnectedNodeIndex( goalLvl3 );
+      std::shared_ptr<ETP::Triangle<P,D>> tNeighbour = tCurrent->getAdjacentVal( idxToNeighb );
+      std::shared_ptr<ETP::Edge<P,D>> edgeOut = tCurrent->getEdgeVal( idxToNeighb );
+      D startToEdgeOutDist = edgeOut->minimumDistance( _startPoint, _scale ) / _scale;
+      D hVal = edgeOut->minimumDistance( _goalPoint, _scale ) / _scale;
+      D lowerBound = 0.0;
+      D hValDiff;
+      if( tNeighbour == goalLvl2 && goalLvl2ToLvl1Edge == nullptr ) lowerBound += getPointToEdgeLowerBound( _goalPoint, goalLvl2ToStartLvl3Edge, _radius, _scale );
+      if( edgeIn != nullptr ){
+        lowerBound += memGValue + tCurrent->getAngle( edgeIn, edgeOut ) * _radius;
+        hValDiff = memGValue + ( tCurrent->getSearchNode()->hValue - hVal );
+      }else{
+        lowerBound += getPointToEdgeLowerBound( _startPoint, edgeOut, _radius, _scale );
+        hValDiff = _startPoint.dist( _goalPoint ) - hVal;
+      }
+      D gValue = std::max( hValDiff, std::max( startToEdgeOutDist, lowerBound ) );
+      setTriangleSearchNode( tNeighbour, ETP::SearchNode<P,D>( hVal, gValue, tCurrent ), usedList );
+      memGValue = gValue;
+      edgeIn = edgeOut;
+      tCurrent = tNeighbour;
+    }
+
+    std::shared_ptr<ETP::searchEndPoint<P,D>> goalEndPoint = nullptr;
+    if( goalLvl2ToLvl1Edge != nullptr ){
+      D dist = _goalPoint.dist( _startPoint ) / _scale;
+      D lvl2To1LowerBound = getPointToEdgeLowerBound( _goalPoint, goalLvl1ToLvl2Edge, _radius, _scale ) + _goalTri->getLowerBound( lvl1StartToLvl2Idx ) * _radius;
+      std::shared_ptr<ETP::Triangle<P,D>> comeFrom = goalLvl2->getSearchNode()->comeFrom;
+
+      D parentGVal = comeFrom->getSearchNode() != nullptr ? comeFrom->getSearchNode()->gValue : getPointToEdgeLowerBound( _startPoint, goalLvl2->getEdgeVal( goalLvl2->getAdjacentIndex( comeFrom ) ), _radius, _scale );
+      D gVal = std::max( dist, ( parentGVal + lvl2To1LowerBound + goalLvl2->getAngle( goalLvl2ToLvl1Edge, goalLvl2ToStartLvl3Edge ) * _radius ) );
+      setTriangleSearchNode( _goalTri, ETP::SearchNode<P,D>( 0.0, gVal, goalLvl2 ), usedList );
+      D lvl2Tolvl3LowerBound = ( goalLvl2->getAngle( goalLvl2ToLvl1Edge, goalLvl2ToGoalLvl3Edge ) + goalLvl2->getLowerBound( lvl2GoalToLvl3GoalIdx ) ) * _radius;
+      D goalToEndPointLowerBound = lvl2To1LowerBound + lvl2Tolvl3LowerBound;
+      D goalToEndPtGValue = goalToEndPointLowerBound; //std::max( goalToEndPointLowerBound, goalEndPtDist );
+      std::shared_ptr<ETP::searchEndPoint<P,D>> lvl1EndPoint = std::make_shared<ETP::searchEndPoint<P,D>>( 0.0, _goalTri, nullptr );
+      std::shared_ptr<ETP::searchEndPoint<P,D>> lvl2EndPoint = std::make_shared<ETP::searchEndPoint<P,D>>( 0.0, goalLvl2, lvl1EndPoint, lvl1GoalToLvl2Idx );
+      goalEndPoint = std::make_shared<ETP::searchEndPoint<P,D>>( 0.0, goalLvl3, lvl2EndPoint, lvl2GoalToLvl3GoalIdx, goalToEndPtGValue );
+    }else{
+      D lvl2Tolvl3LowerBound = getPointToEdgeLowerBound( _goalPoint, goalLvl2ToGoalLvl3Edge, _radius, _scale ) + goalLvl2->getLowerBound( lvl2GoalToLvl3GoalIdx ) * _radius;
+      //D goalEndPtDist = goalLvl3ToCorridorEdge->minimumDistance( _startPoint, _scale ) / _scale;
+      D goalToEndPtGValue = lvl2Tolvl3LowerBound; //std::max( lvl2Tolvl3LowerBound, goalEndPtDist );
+      std::shared_ptr<ETP::searchEndPoint<P,D>> lvl2EndPoint = std::make_shared<ETP::searchEndPoint<P,D>>( 0.0, goalLvl2, nullptr );
+      goalEndPoint = std::make_shared<ETP::searchEndPoint<P,D>>( 0.0, goalLvl3, lvl2EndPoint, lvl2GoalToLvl3GoalIdx, goalToEndPtGValue );
+    }
+    if( startLvl2ToLvl1Edge != nullptr ){
+      D dist = startLvl3ToCorridorEdge->minimumDistance( _startPoint, _scale ) / _scale;
+      D lvl2Tolvl3LowerBound = ( startLvl2->getAngle( startLvl2ToLvl1Edge, startLvl2ToStartLvl3Edge ) + startLvl2->getLowerBound( lvl2StartToLvl3StartIdx ) ) * _radius;
+      D lvl2GValue = startLvl2->getSearchNode()->gValue;
+      D startToLvl3LowerBound = lvl2GValue + lvl2Tolvl3LowerBound;
+      D hVal = startLvl3ToCorridorEdge->minimumDistance( _goalPoint, _scale ) / _scale;
+      D hValDiff = lvl2GValue + ( startLvl2ToLvl1Edge->minimumDistance( _goalPoint, _scale ) / _scale ) - hVal;
+      D startLvl3GValue = std::max( startToLvl3LowerBound, std::max( dist, hValDiff ) );
+      setTriangleSearchNode( startLvl3, ETP::SearchNode<P,D>( hVal, startLvl3GValue, startLvl2, lvl2StartToLvl3StartIdx ), usedList );
+    }else{
+      D dist = startLvl3ToCorridorEdge->minimumDistance( _startPoint, _scale ) / _scale;
+      D lvl2Tolvl3LowerBound = getPointToEdgeLowerBound( _startPoint, startLvl2ToStartLvl3Edge, _radius, _scale ) + startLvl2->getLowerBound( lvl2StartToLvl3StartIdx ) * _radius;
+      D startLvl3GValue = std::max( lvl2Tolvl3LowerBound, dist );
+      setTriangleSearchNode( startLvl3, ETP::SearchNode<P,D>( dist, startLvl3GValue, startLvl2, lvl2StartToLvl3StartIdx ), usedList );
+    }
+    return getFunnel( startLvl3 );
+    //return getFunnel( _goalTri );
+    //return std::vector<std::shared_ptr<ETP::Triangle<P,D>>>{ startLvl3, goalLvl3 };
+  }
+
+  std::vector<std::shared_ptr<ETP::Triangle<P,D>>> searchInsideLvl2CorridorFAIL( ETP::Point<P,D> _startPoint, ETP::Point<P,D> _goalPoint, std::shared_ptr<ETP::Triangle<P,D>> _startTri, std::shared_ptr<ETP::Triangle<P,D>> _goalTri, D _radius, D _scale ){
+    std::shared_ptr<ETP::UsedList<P,D>> usedList = std::make_shared<ETP::UsedList<P,D>>();
+    std::shared_ptr<ETP::Triangle<P,D>> startLvl2Tri;
+    std::shared_ptr<ETP::Edge<P,D>> startLvl2EntryEdge = nullptr;
+    D startLvl1CorridorGValue = 0.0;
+    D goalLvl1CorridorGValue = 0.0;
+    D innerCorridorGValue = 0.0;
+    D startEndPointGValue = 0.0;
+    D goalEndPointGValue = 0.0;
+    if( _startTri->getLevel() == 1 ){
+      startLvl2Tri = _startTri->getLvl1RootNode();
+      int lvl1ToRootIdx = _startTri->getConnectedNodeIndex( startLvl2Tri );
+      int lvl2ToLvl1Idx = _startTri->getIndexfromConnectedNode( lvl1ToRootIdx );
+      std::shared_ptr<ETP::Edge<P,D>> lvl1OuterEdge = _startTri->getEdgeVal( lvl1ToRootIdx );
+      startLvl2EntryEdge = startLvl2Tri->getEdgeVal( lvl2ToLvl1Idx );
+      D startPtToLvl2EntryEdgeDist = startLvl2EntryEdge->minimumDistance( _startPoint, _scale ) / _scale;
+      D startPtToLvl2LowerBound = getPointToEdgeLowerBound( _startPoint, lvl1OuterEdge, _radius, _scale ) + _startTri->getLowerBound( lvl1ToRootIdx ) * _radius;
+      D hVal = startLvl2EntryEdge->minimumDistance( _goalPoint, _scale ) / _scale;
+      D hValDiff = _startPoint.dist( _goalPoint ) - hVal;
+      D gVal = std::max( hValDiff, std::max( startPtToLvl2EntryEdgeDist, startPtToLvl2LowerBound ) );
+      setTriangleSearchNode( startLvl2Tri, ETP::SearchNode<P,D>( hVal, gVal, _startTri ), usedList );
+      startLvl1CorridorGValue += gVal;
+    }else{
+      startLvl2Tri = _startTri;
+    }
+    innerCorridorGValue += startLvl1CorridorGValue;
+
+    std::shared_ptr<ETP::Triangle<P,D>> goalLvl2Tri;
+    std::shared_ptr<ETP::Edge<P,D>> goalLvl2EntryEdge = nullptr;
+    if( _goalTri->getLevel() == 1 ){
+      goalLvl2Tri = _goalTri->getLvl1RootNode();
+      int lvl1ToRootIdx = _goalTri->getConnectedNodeIndex( goalLvl2Tri );
+      std::shared_ptr<ETP::Edge<P,D>> lvl1OuterEdge = _goalTri->getEdgeVal( lvl1ToRootIdx );
+      goalLvl2EntryEdge = goalLvl2Tri->getEdgeVal( _goalTri->getIndexfromConnectedNode( lvl1ToRootIdx ) );
+      setTriangleSearchNode( _goalTri, ETP::SearchNode<P,D>( 0.0, 0.0, goalLvl2Tri ), usedList );
+      D goalPtTolvl2EntryEdgeDist = goalLvl2EntryEdge->minimumDistance( _goalPoint, _scale ) / _scale;
+      D goalPtToLvl2LowerBound = getPointToEdgeLowerBound( _goalPoint, lvl1OuterEdge, _radius, _scale ) + _goalTri->getLowerBound( lvl1ToRootIdx ) * _radius;
+      D hVal = goalLvl2EntryEdge->minimumDistance( _goalPoint, _scale ) / _scale;
+      D gVal = std::max( hVal, std::max( goalPtTolvl2EntryEdgeDist, goalPtToLvl2LowerBound ) );
+      goalLvl1CorridorGValue += gVal;
+    }else{
+      goalLvl2Tri = _goalTri;
+    }
+    std::shared_ptr<ETP::Triangle<P,D>> lvl3_1 = nullptr;
+    std::shared_ptr<ETP::Triangle<P,D>> lvl3_2;
+    for( int i = 0; i < 3; i++ ){
+      std::shared_ptr<ETP::Triangle<P,D>> lv3ConnectedNode = startLvl2Tri->getConnectedNode( i );
+      if( lv3ConnectedNode == nullptr ) continue;
+      if( lvl3_1 == nullptr ){
+        lvl3_1 = lv3ConnectedNode;
+      }else{
+        lvl3_2 = lv3ConnectedNode;
+        break;
+      }
+    }
+    std::shared_ptr<ETP::Triangle<P,D>> startLvl3, goalLvl3;
+    if( startLvl2Tri->getLowerBound( startLvl2Tri->getConnectedNodeIndex( lvl3_1 ) ) > goalLvl2Tri->getLowerBound( goalLvl2Tri->getConnectedNodeIndex( lvl3_1 ) ) ){
+      goalLvl3 = lvl3_1;
+      startLvl3 = lvl3_2;
+    }else{
+      goalLvl3 = lvl3_2;
+      startLvl3 = lvl3_1;
+    }
+    int startLvl2ToStartLvl3Idx = startLvl2Tri->getConnectedNodeIndex( startLvl3 );
+    int startLvl2ToGoalLvl3Idx = startLvl2Tri->getConnectedNodeIndex( goalLvl3 );
+    int goalLvl2ToGoalLvl3Idx = goalLvl2Tri->getConnectedNodeIndex( goalLvl3 );
+
+    std::shared_ptr<ETP::Triangle<P,D>> tCurrent = startLvl2Tri;
+    std::shared_ptr<ETP::Edge<P,D>> edgeIn = startLvl2EntryEdge;
+    for(;;){
+      if( tCurrent == goalLvl2Tri ) break;
+      int idxToNeighb = tCurrent->getConnectedNodeIndex( goalLvl3 );
+      std::shared_ptr<ETP::Triangle<P,D>> tNeighbour = tCurrent->getAdjacentVal( idxToNeighb );
+      std::shared_ptr<ETP::Edge<P,D>> edgeOut = tCurrent->getEdgeVal( idxToNeighb );
+      D startToEdgeOutDist = edgeOut->minimumDistance( _startPoint, _scale ) / _scale;
+      D hVal = edgeOut->minimumDistance( _goalPoint, _scale ) / _scale;
+      D lowerBound;
+      D hValDiff;
+      if( edgeIn != nullptr ){
+        lowerBound = innerCorridorGValue + tCurrent->getAngle( edgeIn, edgeOut ) * _radius;
+        hValDiff = innerCorridorGValue + ( tCurrent->getSearchNode()->hValue - hVal );
+      }else{
+        lowerBound = getPointToEdgeLowerBound( _startPoint, edgeOut, _radius, _scale );
+        hValDiff = _startPoint.dist( _goalPoint ) - hVal;
+      }
+      innerCorridorGValue = std::max( hValDiff, std::max( startToEdgeOutDist, lowerBound ) );
+      setTriangleSearchNode( tNeighbour, ETP::SearchNode<P,D>( hVal, innerCorridorGValue, tCurrent ), usedList );
+      edgeIn = edgeOut;
+      tCurrent = tNeighbour;
+    }
+    if( goalLvl2EntryEdge != nullptr ){
+      std::shared_ptr<ETP::Edge<P,D>> goalLvl2EdgeToStart = goalLvl2Tri->getEdgeVal( goalLvl2Tri->getConnectedNodeIndex( startLvl3 ) );
+      int goalToLvl2Idx = _goalTri->getConnectedNodeIndex( goalLvl2Tri );
+      std::shared_ptr<ETP::Edge<P,D>> lvl1OuterEdge = _goalTri->getEdgeVal( goalToLvl2Idx );
+      D goalLvl1CorridorLowerBound =    goalLvl2Tri->getAngle( goalLvl2EdgeToStart, goalLvl2EntryEdge )
+                                      + _goalTri->getLowerBound( goalToLvl2Idx ) * _radius
+                                      + getPointToEdgeLowerBound( _goalPoint, lvl1OuterEdge, _radius, _scale );
+      D hVal = goalLvl2EdgeToStart->minimumDistance( _goalPoint, _scale ) / _scale;
+      D hValDiff = goalLvl2Tri->getSearchNode()->comeFrom->getSearchNode()->hValue - hVal;
+      D distFromStart = goalLvl2EdgeToStart->minimumDistance( _startPoint, _scale ) / _scale;
+
+      //innerCorridorLowerbound +=  goalLvl2Tri->getAngle( goalLvl2EntryEdge, goalLvl2Tri->getEdgeVal( goalLvl2Tri->getConnectedNodeIndex( lvl3CloserToStart ) ) ) * _radius;
+      //goalToLvl3EndPointLowerBound += goalLvl2Tri->getAngle( goalLvl2EntryEdge, goalLvl2Tri->getEdgeVal( goalLvl2Tri->getConnectedNodeIndex( lvl3FartherToStart ) ) ) * _radius + goalLvl2Tri->getLowerBound( goalLvl2Tri->getConnectedNodeIndex( lvl3FartherToStart ) ) * _radius;
+    }else{
+      //innerCorridorLowerbound += getPointToEdgeLowerBound( _goalPoint, goalLvl2Tri->getEdgeVal( goalLvl2Tri->getConnectedNodeIndex( lvl3CloserToStart ) ), _radius, _scale );
+      //goalToLvl3EndPointLowerBound += getPointToEdgeLowerBound( _goalPoint, goalLvl2Tri->getEdgeVal( goalLvl2Tri->getConnectedNodeIndex( lvl3FartherToStart ) ), _radius, _scale ) + goalLvl2Tri->getLowerBound( goalLvl2Tri->getConnectedNodeIndex( lvl3FartherToStart ) ) * _radius;
+    }
+  }
+
+  std::vector<std::shared_ptr<ETP::Triangle<P,D>>> searchInsideLvl2CorridorLAST( ETP::Point<P,D> _startPoint, ETP::Point<P,D> _goalPoint, std::shared_ptr<ETP::Triangle<P,D>> _startTri, std::shared_ptr<ETP::Triangle<P,D>> _goalTri, D _radius, D _scale ){
+    std::shared_ptr<ETP::UsedList<P,D>> usedList = std::make_shared<ETP::UsedList<P,D>>();
+    std::shared_ptr<ETP::Triangle<P,D>> startLvl2Tri;
+    std::shared_ptr<ETP::Edge<P,D>> lvl2EntryEdge = nullptr;
+    D innerCorridorLowerbound = 0.0;
+    if( _startTri->getLevel() == 1 ){
+      startLvl2Tri = _startTri->getLvl1RootNode();
+      int lvl1ToRootIdx = _startTri->getConnectedNodeIndex( startLvl2Tri );
+      int lvl2ToLvl1Idx = _startTri->getIndexfromConnectedNode( lvl1ToRootIdx );
+      std::shared_ptr<ETP::Edge<P,D>> lvl1OuterEdge = _startTri->getEdgeVal( lvl1ToRootIdx );
+      lvl2EntryEdge = startLvl2Tri->getEdgeVal( lvl2ToLvl1Idx );
+      D startToClosestEdgeDist = lvl2EntryEdge->minimumDistance( _startPoint, _scale ) / _scale;
+      D lvl1ToLvl2LowerBound = getPointToEdgeLowerBound( _startPoint, lvl1OuterEdge, _radius, _scale ) + _startTri->getLowerBound( lvl1ToRootIdx ) * _radius;
+      D hVal = lvl2EntryEdge->minimumDistance( _goalPoint, _scale ) / _scale;
+      D hValDiff = _startPoint.dist( _goalPoint ) - hVal;
+      D gVal = std::max( hValDiff, std::max( startToClosestEdgeDist, lvl1ToLvl2LowerBound ) );
+      setTriangleSearchNode( startLvl2Tri, ETP::SearchNode<P,D>( hVal, gVal, _startTri ), usedList );
+      innerCorridorLowerbound += gVal;
+    }else{
+      startLvl2Tri = _startTri;
+    }
+    D startToLvl3SearchStartLowerBound = innerCorridorLowerbound;
+
+    std::shared_ptr<ETP::Triangle<P,D>> goalLvl2Tri;
+    std::shared_ptr<ETP::Edge<P,D>> goalLvl2EntryEdge = nullptr;
+    D goalToRootLowerBound = 0.0;
+    if( _goalTri->getLevel() == 1 ){
+      goalLvl2Tri = _goalTri->getLvl1RootNode();
+      int lvl1ToRootIdx = _goalTri->getConnectedNodeIndex( goalLvl2Tri );
+      goalLvl2EntryEdge = goalLvl2Tri->getEdgeVal( _goalTri->getIndexfromConnectedNode( lvl1ToRootIdx ) );
+      setTriangleSearchNode( _goalTri, ETP::SearchNode<P,D>( 0.0, 0.0, goalLvl2Tri ), usedList );
+
+      D goalToClosestEdgeDist = goalLvl2EntryEdge->minimumDistance( _goalPoint, _scale ) / _scale;
+      D lvl1ToLvl2LowerBound = getPointToEdgeLowerBound( _goalPoint, goalLvl2EntryEdge, _radius, _scale ) + _goalTri->getLowerBound( lvl1ToRootIdx ) * _radius;
+      D hVal = lvl2EntryEdge->minimumDistance( _goalPoint, _scale ) / _scale;
+      D gVal = std::max( hVal, std::max( goalToClosestEdgeDist, lvl1ToLvl2LowerBound ) );
+      goalToRootLowerBound = gVal;
+      innerCorridorLowerbound += gVal;
+    }else{
+      goalLvl2Tri = _goalTri;
+    }
+    D goalToLvl3EndPointLowerBound = goalToRootLowerBound;
+    std::shared_ptr<ETP::Triangle<P,D>> lvl3_1 = nullptr;
+    std::shared_ptr<ETP::Triangle<P,D>> lvl3_2;
+    for( int i = 0; i < 3; i++ ){
+      std::shared_ptr<ETP::Triangle<P,D>> lv3ConnectedNode = startLvl2Tri->getConnectedNode( i );
+      if( lv3ConnectedNode == nullptr ) continue;
+      if( lvl3_1 == nullptr ){
+        lvl3_1 = lv3ConnectedNode;
+      }else{
+        lvl3_2 = lv3ConnectedNode;
+        break;
+      }
+    }
+
+    std::shared_ptr<ETP::Triangle<P,D>> lvl3FartherToStart, lvl3CloserToStart;
+    if( startLvl2Tri->getLowerBound( startLvl2Tri->getConnectedNodeIndex( lvl3_1 ) ) > goalLvl2Tri->getLowerBound( goalLvl2Tri->getConnectedNodeIndex( lvl3_1 ) ) ){
+      lvl3FartherToStart = lvl3_1;
+      lvl3CloserToStart = lvl3_2;
+    }else{
+      lvl3FartherToStart = lvl3_2;
+      lvl3CloserToStart = lvl3_1;
+    }
+
+    //D innerCorridorLowerbound = lvl2EntryEdge != nullptr ?  startLvl2Tri->getSearchNode()->gValue : 0.0;
+    std::shared_ptr<ETP::Triangle<P,D>> tCurrent = startLvl2Tri;
+    std::shared_ptr<ETP::Edge<P,D>> edgeIn = lvl2EntryEdge;
+    for(;;){
+      if( tCurrent == goalLvl2Tri ) break;
+      int idxToNeighb = tCurrent->getConnectedNodeIndex( lvl3FartherToStart );
+      std::shared_ptr<ETP::Triangle<P,D>> tNeighbour = tCurrent->getAdjacentVal( idxToNeighb );
+      std::shared_ptr<ETP::Edge<P,D>> edgeOut = tCurrent->getEdgeVal( idxToNeighb );
+      D startToEdgeOutDist = edgeOut->minimumDistance( _startPoint, _scale ) / _scale;
+      D hVal = edgeOut->minimumDistance( _goalPoint, _scale ) / _scale;
+      D lowerBound;
+      D hValDiff;
+      if( edgeIn != nullptr ){
+        lowerBound = innerCorridorLowerbound + tCurrent->getAngle( edgeIn, edgeOut ) * _radius;
+        hValDiff = tCurrent->getSearchNode()->hValue - hVal;
+      }else{
+        lowerBound = innerCorridorLowerbound + getPointToEdgeLowerBound( _startPoint, edgeOut, _radius, _scale );
+        hValDiff = _startPoint.dist( _goalPoint ) - hVal;
+      }
+      innerCorridorLowerbound += std::max( hValDiff, std::max( startToEdgeOutDist, lowerBound ) );
+      setTriangleSearchNode( tNeighbour, ETP::SearchNode<P,D>( hVal, innerCorridorLowerbound, tCurrent ), usedList );
+      edgeIn = edgeOut;
+      tCurrent = tNeighbour;
+    }
+    if( goalLvl2EntryEdge != nullptr ){
+      innerCorridorLowerbound +=  goalLvl2Tri->getAngle( goalLvl2EntryEdge, goalLvl2Tri->getEdgeVal( goalLvl2Tri->getConnectedNodeIndex( lvl3CloserToStart ) ) ) * _radius/* + _goalTri->getLowerBound( _goalTri->getConnectedNodeIndex( goalLvl2Tri ) ) * _radius + getPointToEdgeLowerBound( _goalPoint, _goalTri->getEdgeVal( _goalTri->getConnectedNodeIndex( goalLvl2Tri ) ), _radius, _scale )*/;
+      goalToLvl3EndPointLowerBound += goalLvl2Tri->getAngle( goalLvl2EntryEdge, goalLvl2Tri->getEdgeVal( goalLvl2Tri->getConnectedNodeIndex( lvl3FartherToStart ) ) ) * _radius + goalLvl2Tri->getLowerBound( goalLvl2Tri->getConnectedNodeIndex( lvl3FartherToStart ) ) * _radius;
+    }else{
+      innerCorridorLowerbound += getPointToEdgeLowerBound( _goalPoint, goalLvl2Tri->getEdgeVal( goalLvl2Tri->getConnectedNodeIndex( lvl3CloserToStart ) ), _radius, _scale );
+      goalToLvl3EndPointLowerBound += getPointToEdgeLowerBound( _goalPoint, goalLvl2Tri->getEdgeVal( goalLvl2Tri->getConnectedNodeIndex( lvl3FartherToStart ) ), _radius, _scale ) + goalLvl2Tri->getLowerBound( goalLvl2Tri->getConnectedNodeIndex( lvl3FartherToStart ) ) * _radius;
+    }
+
+    int startToCloserLvl3Idx = startLvl2Tri->getConnectedNodeIndex( lvl3CloserToStart );
+    int closerToStartIdx = startLvl2Tri->getIndexfromConnectedNode( startToCloserLvl3Idx );
+    std::shared_ptr<ETP::Edge<P,D>> lvl3EntryEdge = lvl3CloserToStart->getEdgeVal( closerToStartIdx );
+    //D outerCorridorLowerbound = lvl2EntryEdge != nullptr ?  startLvl2Tri->getSearchNode()->gValue : 0.0;
+
+
+    D startToClosestEdgeDist = lvl3EntryEdge->minimumDistance( _startPoint, _scale ) / _scale;
+    D hVal = lvl3EntryEdge->minimumDistance( _goalPoint, _scale ) / _scale;
+    D lowerBound;
+    D hValDiff;
+    if( lvl2EntryEdge != nullptr ){
+      innerCorridorLowerbound += startLvl2Tri->getAngle( lvl2EntryEdge, startLvl2Tri->getEdgeVal( startLvl2Tri->getConnectedNodeIndex( lvl3FartherToStart ) ) ) * _radius;
+      //lowerBound = outerCorridorLowerbound + startLvl2Tri->getAngle( lvl2EntryEdge, startLvl2Tri->getEdgeVal( startToCloserLvl3Idx ) ) * _radius +  startLvl2Tri->getLowerBound( startToCloserLvl3Idx ) * _radius;
+      hValDiff = startLvl2Tri->getSearchNode()->hValue - hVal;
+      startToLvl3SearchStartLowerBound += startLvl2Tri->getAngle( lvl2EntryEdge, startLvl2Tri->getEdgeVal( startLvl2Tri->getConnectedNodeIndex( lvl3CloserToStart ) ) ) * _radius +  startLvl2Tri->getLowerBound( startLvl2Tri->getConnectedNodeIndex( lvl3CloserToStart ) ) * _radius;
+    }else{
+      innerCorridorLowerbound += getPointToEdgeLowerBound( _startPoint, startLvl2Tri->getEdgeVal( startLvl2Tri->getConnectedNodeIndex( lvl3FartherToStart ) ), _radius, _scale );
+      //lowerBound = innerCorridorLowerbound + getPointToEdgeLowerBound( _startPoint, startLvl2Tri->getEdgeVal( startToCloserLvl3Idx ), _radius, _scale ) +  startLvl2Tri->getLowerBound( startToCloserLvl3Idx ) * _radius;
+      hValDiff = _startPoint.dist( _goalPoint ) - hVal;
+      startToLvl3SearchStartLowerBound += getPointToEdgeLowerBound( _startPoint, startLvl2Tri->getEdgeVal( startLvl2Tri->getConnectedNodeIndex( lvl3CloserToStart ) ), _radius, _scale ) +  startLvl2Tri->getLowerBound( startLvl2Tri->getConnectedNodeIndex( lvl3CloserToStart ) ) * _radius;
+    }
+    //outerCorridorLowerbound = std::max( hValDiff, std::max( startToClosestEdgeDist, lowerBound ) );
+    D outerCorridorLowerbound = goalToLvl3EndPointLowerBound + startToLvl3SearchStartLowerBound;
+    D maxSearcgGValue = innerCorridorLowerbound - outerCorridorLowerbound;
+    setTriangleSearchNode( lvl3CloserToStart, ETP::SearchNode<P,D>( hVal, startToLvl3SearchStartLowerBound, startLvl2Tri, startToCloserLvl3Idx ), usedList );
+//    setTriangleSearchNode( lvl3CloserToStart, ETP::SearchNode<P,D>( 0.0, 0.0, startLvl2Tri, closerToStartIdx ), usedList );
+//  setTriangleSearchNode( startLvl2Tri, ETP::SearchNode<P,D>( hVal, outerCorridorLowerbound, _startTri, _startTri->getConnectedNodeIndex(startLvl2Tri) ), usedList );
+    std::shared_ptr<ETP::searchEndPoint<P,D>> lastEndPoint = nullptr;
+  //  D goalGValue = 0.0;
+    if( _goalTri->getLevel() == 1 ){
+      //searchEndPoint( D _gValue, std::shared_ptr<ETP::Triangle<P,D>> _triangle, std::shared_ptr<ETP::searchEndPoint<P,D>> _parent, int _parentIndex, D _gValueToSearchStart )
+      std::shared_ptr<ETP::searchEndPoint<P,D>> gEndPt = std::make_shared<ETP::searchEndPoint<P,D>>( std::numeric_limits<D>::infinity(), _goalTri, nullptr );
+      int goalToRootIdx = _goalTri->getConnectedNodeIndex( goalLvl2Tri );
+      //goalGValue += getPointToEdgeLowerBound( _goalPoint, _goalTri->getEdgeVal( goalToRootIdx ), _radius, _scale ) + _goalTri->getLowerBound( goalToRootIdx ) * _radius;
+      int lvl2ToLvl1Idx = _goalTri->getIndexfromConnectedNode( goalToRootIdx );
+      std::shared_ptr<ETP::searchEndPoint<P,D>> goalRootEndPt = std::make_shared<ETP::searchEndPoint<P,D>>( std::numeric_limits<D>::infinity(), goalLvl2Tri, gEndPt, lvl2ToLvl1Idx, 0.0 );
+      goalRootEndPt->entryEdge = goalLvl2Tri->getEdgeVal( lvl2ToLvl1Idx );
+      int lvl2ToGoalIdx = goalLvl2Tri->getConnectedNodeIndex( lvl3FartherToStart );
+      //goalGValue += goalLvl2Tri->getAngle( goalLvl2Tri->getEdgeVal( lvl2ToLvl1Idx ), goalLvl2Tri->getEdgeVal( lvl2ToGoalIdx ) ) * _radius + goalLvl2Tri->getLowerBound( lvl2ToGoalIdx ) * _radius;
+      int lvl3ToLvl2Idx = goalLvl2Tri->getIndexfromConnectedNode( lvl2ToGoalIdx );
+      lastEndPoint = std::make_shared<ETP::searchEndPoint<P,D>>( std::numeric_limits<D>::infinity(), lvl3FartherToStart, goalRootEndPt, lvl2ToGoalIdx, goalToLvl3EndPointLowerBound );
+      lastEndPoint->entryEdge = lvl3FartherToStart->getEdgeVal( lvl3ToLvl2Idx );
+    }else{
+      std::shared_ptr<ETP::searchEndPoint<P,D>> gEndPt = std::make_shared<ETP::searchEndPoint<P,D>>( std::numeric_limits<D>::infinity(), _goalTri, nullptr );
+      int lvl2ToLvl3Idx = _goalTri->getConnectedNodeIndex( lvl3FartherToStart );
+      //goalGValue += getPointToEdgeLowerBound( _goalPoint, _goalTri->getEdgeVal( lvl2ToLvl3Idx ), _radius, _scale ) + _goalTri->getLowerBound( lvl2ToLvl3Idx ) * _radius;
+      int lvl3ToLvl2Idx = _goalTri->getIndexfromConnectedNode( lvl2ToLvl3Idx );
+      lastEndPoint = std::make_shared<ETP::searchEndPoint<P,D>>( std::numeric_limits<D>::infinity(), lvl3FartherToStart, gEndPt, lvl2ToLvl3Idx, goalToLvl3EndPointLowerBound );
+      lastEndPoint->entryEdge = lvl3FartherToStart->getEdgeVal( lvl3ToLvl2Idx );
+    }
+
+//return std::vector<std::shared_ptr<ETP::Triangle<P,D>>> { lvl3CloserToStart, lastEndPoint->triangle };
+//lastEndPoint->gValue = 0.0;
+//lastEndPoint->gValueToSearchStart = 0.0;
+//lastEndPoint->triangle->getSearchNode()->gValue = std::numeric_limits<D>::infinity();
+    ETP::searchResult<P,D> classicSearch = searchBetweenLvl3EndPoints( _startPoint, _goalPoint, std::vector<std::shared_ptr<ETP::Triangle<P,D>>>{ lvl3CloserToStart }, std::vector<std::shared_ptr<ETP::searchEndPoint<P,D>>>{ lastEndPoint }, maxSearcgGValue, _radius, _scale, usedList );
+
+    if( classicSearch.goalEndPoint != nullptr ){
+    //  return std::vector<std::shared_ptr<ETP::Triangle<P,D>>> { classicSearch.goalEndPoint->triangle };
+      setSearchNodesFromEndPoint( classicSearch.goalEndPoint, usedList, true );
+    }
+
+    return getFunnel( _goalTri );
+
+
+
+
 
   }
-  std::vector<std::shared_ptr<ETP::Triangle<P,D>>> searchInsideLvl2Corridor ( ETP::Point<P,D> _startPoint, ETP::Point<P,D> _goalPoint, std::shared_ptr<ETP::Triangle<P,D>> _startTri, std::shared_ptr<ETP::Triangle<P,D>> _goalTri, D _radius, D _scale ){
+
+  std::vector<std::shared_ptr<ETP::Triangle<P,D>>> searchInsideLvl2CorridorLAST2( ETP::Point<P,D> _startPoint, ETP::Point<P,D> _goalPoint, std::shared_ptr<ETP::Triangle<P,D>> _startTri, std::shared_ptr<ETP::Triangle<P,D>> _goalTri, D _radius, D _scale ){
+    std::vector<std::shared_ptr<ETP::searchEndPoint<P,D>>> startEndPoints = getTriangleEndPoints( _startTri, _goalPoint, _radius, _scale );
+    std::vector<std::shared_ptr<ETP::searchEndPoint<P,D>>> goalEndPoints = getTriangleEndPoints( _goalTri, _goalPoint, _radius, _scale );
+
+    std::shared_ptr<ETP::searchEndPoint<P,D>> startRootEndPoint = startEndPoints[ 0 ]->parent;
+    std::shared_ptr<ETP::Triangle<P,D>> startRootTri = startRootEndPoint->triangle;
+    std::shared_ptr<ETP::searchEndPoint<P,D>> goalRootEndPoint = goalEndPoints[ 0 ]->parent;
+    std::shared_ptr<ETP::Triangle<P,D>> goalRootTri = goalRootEndPoint->triangle;
+    std::shared_ptr<ETP::searchEndPoint<P,D>> endPointFartherFromStartRoot;
+    std::shared_ptr<ETP::searchEndPoint<P,D>> endPointCloserFromStartRoot;
+    D distFromStartRoot;
+    D distFromGoalRoot;
+    for( size_t i = 0; i < startEndPoints.size(); i++ ){
+      std::shared_ptr<ETP::searchEndPoint<P,D>> testedEndPoint = startEndPoints[ i ];
+      distFromStartRoot = startRootTri->getLowerBound( startRootTri->getConnectedNodeIndex( testedEndPoint->triangle ) );
+      distFromGoalRoot = goalRootTri->getLowerBound( goalRootTri->getConnectedNodeIndex( testedEndPoint->triangle ) );
+      if( distFromStartRoot > distFromGoalRoot ){
+        endPointFartherFromStartRoot = testedEndPoint;
+        endPointCloserFromStartRoot = startEndPoints[ i == 0 ? 1 : 0 ];
+        break;
+      }
+    }
+
+    std::shared_ptr<ETP::Triangle<P,D>> endSearchTri = endPointFartherFromStartRoot->triangle;
+    std::shared_ptr<ETP::Triangle<P,D>> startSearchTri = endPointCloserFromStartRoot->triangle;
+    int startRootToEndSearchIdx = startRootTri->getConnectedNodeIndex( endSearchTri );
+    int startRootToStartSearchIdx = startRootTri->getConnectedNodeIndex( startSearchTri );
+    int goalRootToEndSearchIdx = goalRootTri->getConnectedNodeIndex( endSearchTri );
+    int goalRootToStartSearchIdx = goalRootTri->getConnectedNodeIndex( startSearchTri );
+
+
+
+    D innerCorridorGVal = distFromStartRoot - distFromGoalRoot
+                      - goalRootTri->getAngle( goalRootTri->getEdgeVal( goalRootToEndSearchIdx ), goalRootTri->getEdgeVal( goalRootToStartSearchIdx ) ) * _radius
+                      + ( startRootEndPoint->entryEdge != nullptr ? startRootTri->getAngle( startRootEndPoint->entryEdge, startRootTri->getEdgeVal( startRootToEndSearchIdx ) ) * _radius : getPointToEdgeLowerBound( _startPoint, startRootTri->getEdgeVal( startRootToEndSearchIdx ), _radius, _scale ) )
+                      + ( goalRootEndPoint->entryEdge != nullptr ? goalRootTri->getAngle( goalRootEndPoint->entryEdge, goalRootTri->getEdgeVal( goalRootToStartSearchIdx ) ) * _radius : getPointToEdgeLowerBound( _goalPoint, goalRootTri->getEdgeVal( goalRootToStartSearchIdx ), _radius, _scale ) );
+    D outerCorridorGVal = ( startRootEndPoint->entryEdge != nullptr ? startRootTri->getAngle( startRootEndPoint->entryEdge, startRootTri->getEdgeVal( startRootToStartSearchIdx ) ) * _radius : getPointToEdgeLowerBound( _startPoint, startRootTri->getEdgeVal( startRootToStartSearchIdx ), _radius, _scale ) )
+                      + startRootTri->getLowerBound( startRootTri->getConnectedNodeIndex( startSearchTri ) ) * _radius
+                      + ( goalRootEndPoint->entryEdge != nullptr ? goalRootTri->getAngle( goalRootEndPoint->entryEdge, goalRootTri->getEdgeVal( goalRootToEndSearchIdx ) ) * _radius : getPointToEdgeLowerBound( _goalPoint, goalRootTri->getEdgeVal( goalRootToEndSearchIdx ), _radius, _scale ) )
+                      + goalRootTri->getLowerBound( goalRootToEndSearchIdx ) * _radius;
+    std::shared_ptr<ETP::UsedList<P,D>> usedList = std::make_shared<ETP::UsedList<P,D>>();
+
+
+    std::shared_ptr<ETP::Triangle<P,D>> tCurrent = startRootTri;
+    for(;;){
+      if( tCurrent == goalRootTri ) break;
+      std::shared_ptr<ETP::Triangle<P,D>> tNeighbour = tCurrent->getAdjacentVal( tCurrent->getConnectedNodeIndex( endSearchTri ) );
+      setTriangleSearchNode( tNeighbour, ETP::SearchNode<P,D>( 0.0, 0.0, tCurrent ), usedList );
+      tCurrent = tNeighbour;
+    }
+    return getFunnel( goalRootTri );
+
+
+
+    setSearchNodesFromEndPoint( endPointFartherFromStartRoot, usedList, true );
+    setSearchNodesFromEndPoint( endPointCloserFromStartRoot, usedList, false );
+    D maxSearchGVal = innerCorridorGVal - outerCorridorGVal;
+    if( maxSearchGVal <= 0.0 ) return getFunnel( _goalTri );
+    ETP::searchResult<P,D> classicSearch = searchBetweenLvl3EndPoints( _startPoint, _goalPoint, endPointCloserFromStartRoot, std::vector<std::shared_ptr<ETP::searchEndPoint<P,D>>>{ endPointFartherFromStartRoot }, maxSearchGVal, _radius, _scale, usedList );
+    return getFunnel( _goalTri );
+
+  }
+
+  std::vector<std::shared_ptr<ETP::Triangle<P,D>>> searchInsideLvl2CorridorBACKUP00( ETP::Point<P,D> _startPoint, ETP::Point<P,D> _goalPoint, std::shared_ptr<ETP::Triangle<P,D>> _startTri, std::shared_ptr<ETP::Triangle<P,D>> _goalTri, D _radius, D _scale ){
+    std::vector<std::shared_ptr<ETP::searchEndPoint<P,D>>> startEndPoints =  getTriangleEndPoints( _startTri, _goalPoint, _radius, _scale );
+    std::vector<std::shared_ptr<ETP::searchEndPoint<P,D>>> goalEndPoints =  getTriangleEndPoints( _startTri, _goalPoint, _radius, _scale );
+    std::shared_ptr<ETP::searchEndPoint<P,D>> startEndPoint = startEndPoints[ 0 ];
+    std::shared_ptr<ETP::searchEndPoint<P,D>> goalEndPoint = goalEndPoints[ 0 ];
+    std::shared_ptr<ETP::Triangle<P,D>> endTri = startEndPoint->triangle;
+    std::shared_ptr<ETP::Triangle<P,D>> otherEndTri = startEndPoints[ 1 ]->triangle;
+    std::shared_ptr<ETP::Triangle<P,D>> startRootTri = startEndPoint->parent->triangle;
+    std::shared_ptr<ETP::Triangle<P,D>> goalRootTri = goalEndPoint->parent->triangle;
+
+    int idxFromStartToEndPt = startRootTri->getConnectedNodeIndex( endTri );
+    D distFromStart = startRootTri->getLowerBound( idxFromStartToEndPt ) * _radius;
+
+    int idxFromGoalToEndPt = goalRootTri->getConnectedNodeIndex( endTri );
+    D distFromGoal = goalRootTri->getLowerBound( idxFromGoalToEndPt ) * _radius;
+
+    std::shared_ptr<ETP::searchEndPoint<P,D>> fartherEndPoint;
+    std::shared_ptr<ETP::Triangle<P,D>> tFartherFromEndPt;
+    ETP::Point<P,D> fartherPoint;
+    int idxFromFartherToEndPt;
+
+    std::shared_ptr<ETP::searchEndPoint<P,D>> closerEndPoint;
+    std::shared_ptr<ETP::Triangle<P,D>> tCloserFromEndPt;
+    ETP::Point<P,D> closerPoint;
+    int idxFromCloserToEndPt;
+
+    if( distFromStart > distFromGoal ){
+      fartherEndPoint = startEndPoint->parent;
+      tFartherFromEndPt = startRootTri;
+      fartherPoint = _startPoint;
+      idxFromFartherToEndPt = idxFromStartToEndPt;
+
+      closerEndPoint = goalEndPoint->parent;
+      tCloserFromEndPt = goalRootTri;
+      closerPoint = _goalPoint;
+      idxFromCloserToEndPt = idxFromGoalToEndPt;
+    }else{
+      fartherEndPoint = goalEndPoint->parent;
+      tFartherFromEndPt = goalRootTri;
+      fartherPoint = _goalPoint;
+      idxFromFartherToEndPt = idxFromGoalToEndPt;
+
+      closerEndPoint = startEndPoint->parent;
+      tCloserFromEndPt = startRootTri;
+      closerPoint = _startPoint;
+      idxFromCloserToEndPt = idxFromStartToEndPt;
+    }
+
+    D fartherToEndPtLowerBound = 0.0;
+    D fartherToOtherEndPtLowerBound =  tFartherFromEndPt->getLowerBound( tFartherFromEndPt->getConnectedNodeIndex( otherEndTri ) );
+    std::shared_ptr<ETP::Edge<P,D>> fartherEdgeToOtherEndPt = tFartherFromEndPt->getEdgeVal( tFartherFromEndPt->getConnectedNodeIndex( otherEndTri ) );
+    if( fartherEndPoint->entryEdge != nullptr ){
+      fartherToEndPtLowerBound += tFartherFromEndPt->getAngle( fartherEndPoint->entryEdge, tFartherFromEndPt->getEdgeVal( idxFromFartherToEndPt ) ) * _radius;
+      fartherToOtherEndPtLowerBound += tFartherFromEndPt->getAngle( fartherEndPoint->entryEdge, fartherEdgeToOtherEndPt ) * _radius;
+    }else{
+      fartherToEndPtLowerBound += getPointToEdgeLowerBound( fartherPoint, tFartherFromEndPt->getEdgeVal( idxFromFartherToEndPt ), _radius, _scale );
+      fartherToOtherEndPtLowerBound += getPointToEdgeLowerBound( fartherPoint, fartherEdgeToOtherEndPt, _radius, _scale );
+    }
+    fartherToEndPtLowerBound += tFartherFromEndPt->getLowerBound( idxFromFartherToEndPt );
+
+    std::shared_ptr<ETP::Edge<P,D>> closerEdgeToFarther = tCloserFromEndPt->getEdgeVal( tCloserFromEndPt->getConnectedNodeIndex( otherEndTri ) );
+    D closerInnerLowerBound = tCloserFromEndPt->getAngle( tCloserFromEndPt->getEdgeVal( idxFromStartToEndPt ), closerEdgeToFarther ) * _radius;
+    D closerToEndPtLowerBound = tCloserFromEndPt->getLowerBound( idxFromStartToEndPt );
+    D gVal = fartherToEndPtLowerBound - closerToEndPtLowerBound - closerInnerLowerBound;
+    if( closerEndPoint->entryEdge != nullptr ){
+      D closerAngleWithEntry = tCloserFromEndPt->getAngle( closerEndPoint->entryEdge, closerEdgeToFarther ) * _radius;
+      gVal += closerAngleWithEntry;
+      closerToEndPtLowerBound += closerAngleWithEntry;
+    }else{
+      D closerDistToOuterEdge = getPointToEdgeLowerBound( fartherPoint, tFartherFromEndPt->getEdgeVal( idxFromFartherToEndPt ), _radius, _scale );
+      gVal += closerDistToOuterEdge;
+      closerToEndPtLowerBound += closerDistToOuterEdge;
+    }
+    D searchMaxGValue = gVal - ( closerToEndPtLowerBound + fartherToOtherEndPtLowerBound );
+
+    std::shared_ptr<ETP::UsedList<P,D>> usedList = std::make_shared<ETP::UsedList<P,D>>();
+    if( startEndPoint->parent != nullptr ){
+      std::shared_ptr<ETP::searchEndPoint<P,D>> prevEndPt = startEndPoint->parent;
+      for(;;){
+        std::shared_ptr<ETP::searchEndPoint<P,D>> nextEndPt = prevEndPt->parent;
+        int nextTriIdx = nextEndPt != nullptr ? nextEndPt->triangle->getIndexfromConnectedNode( nextEndPt->triangle->getConnectedNodeIndex( nextEndPt->triangle ) ) : -1;
+        setTriangleSearchNode( prevEndPt->triangle, ETP::SearchNode<P,D>( 0.0, 0.0, nextEndPt != nullptr ? nextEndPt->triangle : nullptr ), usedList );
+        if( nextEndPt == nullptr ) break;
+        prevEndPt = nextEndPt;
+      }
+    }
+
+    setTriangleSearchNode( goalEndPoint->triangle, ETP::SearchNode<P,D>( gVal, 0.0, startEndPoint->triangle/*, nextTriIdx*/ ), usedList );
+    if( goalEndPoint->parent != nullptr ){
+      std::shared_ptr<ETP::searchEndPoint<P,D>> prevEndPt = goalEndPoint;
+      for(;;){
+        std::shared_ptr<ETP::searchEndPoint<P,D>> nextEndPt = prevEndPt->parent;
+        setTriangleSearchNode( nextEndPt->triangle, ETP::SearchNode<P,D>( 0.0, 0.0, prevEndPt->triangle/*, prevEndPt->triangle->getIndexfromConnectedNode( prevEndPt->triangle->getConnectedNodeIndex( prevEndPt->triangle ) )*/ ), usedList );
+        if( nextEndPt->parent == nullptr ) break;
+        prevEndPt = nextEndPt;
+        nextEndPt = nextEndPt->parent;
+      }
+    }
+
+    ETP::searchResult<P,D> classicSearch = searchBetweenLvl3EndPoints( _startPoint, _goalPoint, startEndPoint, std::vector<std::shared_ptr<ETP::searchEndPoint<P,D>>>{ goalEndPoints[ 0 ] }, searchMaxGValue, _radius, _scale, usedList );
+    return getFunnel( _goalTri );
+}
+  std::vector<std::shared_ptr<ETP::Triangle<P,D>>> searchInsideLvl2CorridorBACKUP ( ETP::Point<P,D> _startPoint, ETP::Point<P,D> _goalPoint, std::shared_ptr<ETP::Triangle<P,D>> _startTri, std::shared_ptr<ETP::Triangle<P,D>> _goalTri, D _radius, D _scale ){
     std::shared_ptr<ETP::Triangle<P,D>> endPoint = nullptr;
     std::shared_ptr<ETP::Triangle<P,D>> otherEndPoint;
     D sDist;
@@ -1878,7 +2635,7 @@ public:
   }
 
   std::vector<std::shared_ptr<ETP::searchEndPoint<P,D>>> getTriangleEndPoints( std::shared_ptr<ETP::Triangle<P,D>> _tri, ETP::Point<P,D> _goalPoint, D _radius, D _scale ){
-  std::vector<std::shared_ptr<ETP::searchEndPoint<P,D>>> ret;
+  std::vector<std::shared_ptr<ETP::searchEndPoint<P,D>>> ret = std::vector<std::shared_ptr<ETP::searchEndPoint<P,D>>>();
   //  ETP::Triangle<P,D> tri = *_tri.get();
   std::shared_ptr<ETP::searchEndPoint<P,D>> finalEndPt = std::make_shared<ETP::searchEndPoint<P,D>>( 0.0, _tri );
   int lvl = _tri->getLevel();
@@ -1889,18 +2646,18 @@ public:
       std::shared_ptr<ETP::Triangle<P,D>> connectedNode = _tri->getConnectedNode( i );
       if( connectedNode != nullptr ){
         bool isNew = true;
-        D lowerBound = getPointToEdgeLowerBound( _goalPoint, _tri->getEdgeVal( i ), _radius, _scale );
-        size_t retl = ret.size();
+        D lowerBound = getPointToEdgeLowerBound( _goalPoint, _tri->getEdgeVal( i ), _radius, _scale ) + _tri->getLowerBound( i ) * _radius;
         for ( auto ePt : ret ){
           if( connectedNode == ePt->triangle ){
             isNew = false;
+            continue;
             if( lowerBound < ePt->gValue ){
-              ePt = std::make_shared<ETP::searchEndPoint<P,D>>( lowerBound, connectedNode, finalEndPt, _tri->getReversedConnectedNodeIndex( connectedNode ) );
+              ePt = std::make_shared<ETP::searchEndPoint<P,D>>( lowerBound, connectedNode, finalEndPt, _tri->getIndexfromConnectedNode( i ) );
             }
           }
         }
         if( isNew == true ){
-          ret.push_back( std::make_shared<ETP::searchEndPoint<P,D>>( lowerBound, connectedNode, finalEndPt, _tri->getReversedConnectedNodeIndex( connectedNode ) ) );
+          ret.push_back( std::make_shared<ETP::searchEndPoint<P,D>>( lowerBound, connectedNode, finalEndPt, _tri->getIndexfromConnectedNode( i ) ) );
         }
       }
     }
@@ -1921,13 +2678,13 @@ public:
               if( lvl3Node == ePt->triangle ){
                 isNew = false;
                 if( lowerBound < ePt->gValue ){
-                  ret[ k ] = std::make_shared<ETP::searchEndPoint<P,D>>( lvl2EndPt->gValue + lowerBound, lvl3Node, lvl2EndPt );
+                  ret[ k ] = std::make_shared<ETP::searchEndPoint<P,D>>( lvl2EndPt->gValue + lowerBound, lvl3Node, lvl2EndPt, connectedNode->getIndexfromConnectedNode( j ) );
                 }
                 break;
               }
             }
             if( isNew == true ){
-              ret.push_back( std::make_shared<ETP::searchEndPoint<P,D>>( lvl2EndPt->gValue + lowerBound, lvl3Node, lvl2EndPt, connectedNode->getReversedConnectedNodeIndex( lvl3Node ) ) );
+              ret.push_back( std::make_shared<ETP::searchEndPoint<P,D>>( lvl2EndPt->gValue + lowerBound, lvl3Node, lvl2EndPt, connectedNode->getIndexfromConnectedNode( j ) ) );
             }
           }
         }
@@ -1937,10 +2694,57 @@ public:
   }
   return ret;
   }
+  void setSearchNodesFromEndPoint( std::shared_ptr<ETP::searchEndPoint<P,D>> endPoint, std::shared_ptr<ETP::UsedList<P,D>> usedList, bool isGoalPart ){
+    std::shared_ptr<ETP::searchEndPoint<P,D>> currEndPt = endPoint;
 
-
-
-
+    if( isGoalPart == true ){
+      for(;;){
+        //if( currEndPt == nullptr ) break;
+        std::shared_ptr<ETP::searchEndPoint<P,D>> prevEndPt = currEndPt->parent;
+        if( prevEndPt == nullptr ) break;
+        std::shared_ptr<ETP::Triangle<P,D>> prevTri = prevEndPt->triangle;
+        int prevLvl = prevTri->getLevel();
+        if( prevLvl == 2 ){
+          setTriangleSearchNode( prevTri, ETP::SearchNode<P,D>( 0.0, 0.0, currEndPt->triangle/*, nextTriIdx*/ ), usedList );
+          currEndPt = prevEndPt;
+        }else if( prevLvl == 1 ){
+          setTriangleSearchNode( prevTri, ETP::SearchNode<P,D>( 0.0, 0.0, currEndPt->triangle ), usedList );
+          break;
+        }
+      }
+    }else{
+      for(;;){
+        //if( currEndPt == nullptr ) break;
+        std::shared_ptr<ETP::searchEndPoint<P,D>> prevEndPt = currEndPt->parent;
+        if( prevEndPt == nullptr ) break;
+        std::shared_ptr<ETP::Triangle<P,D>> prevTri = prevEndPt->triangle;
+        int prevLvl = prevTri->getLevel();
+        if( prevLvl == 2 ){
+          std::shared_ptr<ETP::Triangle<P,D>> nextLvl2 = currEndPt->triangle->getAdjacentVal( prevTri->getIndexfromConnectedNode( prevTri->getConnectedNodeIndex( currEndPt->triangle ) ) );
+          setTriangleSearchNode( currEndPt->triangle, ETP::SearchNode<P,D>( 0.0, 0.0, nextLvl2 ), usedList );
+          for(;;){
+            if( nextLvl2 == prevTri ) break;
+            std::shared_ptr<ETP::Triangle<P,D>> secLvl2;
+            for( int i = 0; i < 3; i++ ){
+              std::shared_ptr<ETP::Triangle<P,D>> tmpNextLvl2 = nextLvl2->getAdjacentVal( i );
+              if( tmpNextLvl2 != nullptr && tmpNextLvl2->getSearchNode() == nullptr && tmpNextLvl2->getLevel() == 2 ){
+                secLvl2 = tmpNextLvl2;
+                break;
+              }
+            }
+            setTriangleSearchNode( nextLvl2, ETP::SearchNode<P,D>( 0.0, 0.0, secLvl2 ), usedList );
+            if( secLvl2 == prevTri ) break;
+            nextLvl2 = secLvl2;
+          }
+          currEndPt = prevEndPt;
+          //prevEndPt = currEndPt->parent;
+        }else if( prevLvl == 1 ){
+          setTriangleSearchNode( currEndPt->triangle, ETP::SearchNode<P,D>( 0.0, 0.0, prevTri ), usedList );
+          break;
+        }
+      }
+    }
+  }
 
 
 
@@ -3395,7 +4199,83 @@ std::shared_ptr<ETP::UsedList<P,D>> usedList = std::make_shared<ETP::UsedList<P,
     }
     return ret;
   }
+
   std::vector<std::shared_ptr<ETP::Triangle<P,D>>> getFunnel( std::shared_ptr<ETP::Triangle<P,D>> _goalTri ){
+    std::vector<std::shared_ptr<ETP::Triangle<P,D>>> ret;
+    if( _goalTri->getLevel() == 2 || _goalTri->getLevel() == 3 ) ret.push_back( _goalTri );
+    std::shared_ptr<ETP::Triangle<P,D>> tCurrent = _goalTri;
+    for(;;){
+      std::shared_ptr<ETP::SearchNode<P,D>> tSN = tCurrent->getSearchNode();
+      if( tSN == nullptr ) break;
+      std::shared_ptr<ETP::Triangle<P,D>> tComeFrom = tSN->comeFrom;
+      if( tComeFrom == nullptr ) break;
+      int tCurLvl = tCurrent->getLevel();
+      int tComeFromLvl = tComeFrom->getLevel();
+      if( ( tCurLvl == 3 && tComeFromLvl == 3 ) || ( tCurLvl == 2 && tComeFromLvl == 3 ) ){
+        std::shared_ptr<ETP::Triangle<P,D>> tmpCurrent = tCurrent;
+        for(;;){
+          tmpCurrent = tmpCurrent->getAdjacentVal( tmpCurrent->getConnectedNodeIndex( tComeFrom ) );
+          ret.insert( ret.begin(), tmpCurrent );
+          if( tmpCurrent ==  tComeFrom ) break;
+        }
+      }else if( tCurLvl == 1 && tComeFromLvl == 2 ){
+        for(;;){
+          ret.insert( ret.begin(), tCurrent );
+          if( tCurrent == tComeFrom ) break;
+          tCurrent = tCurrent->getAdjacentVal( tCurrent->getConnectedNodeIndex( tComeFrom ) );
+        }
+      }else if( tCurLvl == 2 && tComeFromLvl == 2 ){
+        ret.insert( ret.begin(), tComeFrom );
+      }else if( tCurLvl == 3 && tComeFromLvl == 2 ){
+        int lvl2To3Idx, lvl3To2Idx;
+
+        if( tSN->comeFromIdx != -1 ){
+          lvl2To3Idx = tSN->comeFromIdx;
+          lvl3To2Idx = tComeFrom->getIndexfromConnectedNode( lvl2To3Idx );
+        }else{
+          D memLowerBound;
+          bool first = false;
+          int tmpLvl2To3Idx, tmpLvl3To2Idx;
+          for( int i = 0; i < 3; i++ ){
+            if( tComeFrom->getConnectedNode( i ) == tCurrent ){
+              if( first == false || tComeFrom->getLowerBound( i ) < memLowerBound ){
+                tmpLvl2To3Idx = i;
+                tmpLvl3To2Idx = tComeFrom->getIndexfromConnectedNode( i );
+                memLowerBound = tComeFrom->getLowerBound( i );
+                first = true;
+              }
+            }
+          }
+          lvl2To3Idx = tmpLvl2To3Idx;
+          lvl3To2Idx = tmpLvl3To2Idx;
+        }
+
+        std::shared_ptr<ETP::Triangle<P,D>> tmpCurrent = tComeFrom;
+        for( int i = 0; ; i++ ){
+          if( tmpCurrent == tCurrent ) break;
+          ret.insert( ret.begin() + i , tmpCurrent );
+          for( int j = 0; j < 3; j++ ){
+            if( tmpCurrent->getConnectedNode( j ) == tCurrent && tmpCurrent->getIndexfromConnectedNode( j ) == lvl3To2Idx ){
+              tmpCurrent = tmpCurrent->getAdjacentVal( j );
+              break;
+            }
+          }
+        }
+
+      }else if( tCurLvl == 2 && tComeFromLvl == 1 ){
+        std::shared_ptr<ETP::Triangle<P,D>> tmpCurrent = tComeFrom;
+        for( int i = 0; ; i++ ){
+          if( tCurrent == tmpCurrent ) break;
+          ret.insert( ret.begin() + i , tmpCurrent );
+          tmpCurrent = tmpCurrent->getAdjacentVal( tmpCurrent->getConnectedNodeIndex( tCurrent ) );
+        }
+      }
+      tCurrent = ret.front();
+    }
+    return ret;
+  }
+
+  std::vector<std::shared_ptr<ETP::Triangle<P,D>>> getFunnelB( std::shared_ptr<ETP::Triangle<P,D>> _goalTri ){
     std::vector<std::shared_ptr<ETP::Triangle<P,D>>> ret;
     ret.push_back( _goalTri );
     bool startReached = false;
