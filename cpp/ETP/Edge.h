@@ -141,6 +141,31 @@ public:
     ETP::Point<D,D> projection = ETP::Point<D,D>( v.x + t * ( w.x - v.x ),  v.y + t * ( w.y - v.y ) );
     return p.dist( projection );
   }
+
+  D minimumDistance( ETP::Point<P,D> _p, D _radius, D _scale ){
+    ETP::Point<P,D> ebv = *getPointVal( 0 ).get();
+    ETP::Point<D,D> ev = ETP::Point<D,D>( (D) ebv.x  * _scale, (D) ebv.y  * _scale );
+    ETP::Point<P,D> ebw = *getPointVal( 1 ).get();
+    ETP::Point<D,D> ew = ETP::Point<D,D>( (D) ebw.x * _scale, (D) ebw.y * _scale );
+
+    ETP::Point<D,D> vToW = ETP::Point<D,D>( ew.x - ev.x, ew.y - ev.y );
+    D evewl = std::pow( vToW.x * vToW.x + vToW.y * vToW.y, 0.5 );
+    ETP::Point<D,D> nvToW = ETP::Point<D,D>( vToW.x / evewl, vToW.y / evewl );
+    //ETP::Point<D,D> wTov = ETP::Point<D,D>( ev.x - ew.x, ev.y - ew.y );
+
+    ETP::Point<D,D> v = ETP::Point<D,D>( ev.x + nvToW.x * _radius , ev.y + nvToW.y * _radius );
+    ETP::Point<D,D> w = ETP::Point<D,D>( ew.x - nvToW.x * _radius , ew.y - nvToW.y * _radius );
+
+    ETP::Point<D,D> p = ETP::Point<D,D>( (D) _p.x, (D) _p.y );
+    D l2 = ( ( w.x - v.x ) * ( w.x - v.x ) ) + ( ( w.y - v.y ) * ( w.y - v.y ) );
+    if( l2 == 0.0 ) return p.dist( v );
+    ETP::Point<D,D> vp = ETP::Point<D,D>( p.x - v.x, p.y - v.y );
+    ETP::Point<D,D> vw = ETP::Point<D,D>( w.x - v.x, w.y - v.y );
+    const D t = std::max( (D) 0.0, std::min( (D) 1.0, vp.dot( vw ) / l2 ) );
+    ETP::Point<D,D> projection = ETP::Point<D,D>( v.x + t * ( w.x - v.x ),  v.y + t * ( w.y - v.y ) );
+    return p.dist( projection );
+  }
+
 };
 
 }

@@ -30,7 +30,7 @@ NAN_MODULE_INIT( TowerDefense::Init ) {
   Nan::SetPrototypeMethod( ctor, "getTriangleId", getTriangleId );
 
   Nan::SetPrototypeMethod( ctor, "getSectors", getSectors );
-  Nan::SetPrototypeMethod( ctor, "testTRAStar", testTRAStar );
+  //Nan::SetPrototypeMethod( ctor, "testTRAStar", testTRAStar );
 
   Nan::SetPrototypeMethod( ctor, "testTRAStarScale", testTRAStarScale );
 
@@ -494,7 +494,7 @@ NAN_METHOD( TowerDefense::getSectors ){
   TowerDefense* self = Nan::ObjectWrap::Unwrap<TowerDefense>( info.This() );
   info.GetReturnValue().Set( self->space->getSectors() );
 }
-
+/*
 NAN_METHOD( TowerDefense::testTRAStar ){
   TowerDefense* self = Nan::ObjectWrap::Unwrap<TowerDefense>( info.This() );
   tPos sx = info[ 0 ]->IntegerValue();
@@ -518,6 +518,7 @@ NAN_METHOD( TowerDefense::testTRAStar ){
 
   info.GetReturnValue().Set( ob );
 }
+*/
 
 NAN_METHOD( TowerDefense::testTRAStarScale ){
   TowerDefense* self = Nan::ObjectWrap::Unwrap<TowerDefense>( info.This() );
@@ -531,7 +532,7 @@ NAN_METHOD( TowerDefense::testTRAStarScale ){
   std::shared_ptr<ETP::Triangle<tPos,tDecim>> gt = self->space->getTriangleWithPoint( ETP::Point<tPos,tDecim>( gx, gy ), scale );
   //std::string ret = self->space->abstractTriangulationSearch( st, gt );
   //std::vector<std::shared_ptr<ETP::Triangle<tPos,tDecim>>> ret = self->space->abstractTriangulationSearch( st, gt );
-  std::vector<std::shared_ptr<ETP::Triangle<tPos,tDecim>>> ret = self->space->abstractTriangulationSearch( ETP::Point<tPos,tDecim>( sx, sy ),  ETP::Point<tPos,tDecim>( gx, gy ), 2.0, scale );
+  std::vector<std::shared_ptr<ETP::Triangle<tPos,tDecim>>> ret = self->space->abstractTriangulationSearch( ETP::Point<tPos,tDecim>( sx, sy ),  ETP::Point<tPos,tDecim>( gx, gy ), 1.0, scale );
 
   v8::Local<v8::Array> ids =  self->space->listTrianglesIds( ret );
   v8::Local<v8::Array> tris = self->space->convertTriangles( ret );

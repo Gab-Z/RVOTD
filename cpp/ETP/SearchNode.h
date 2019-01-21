@@ -32,7 +32,7 @@ struct searchEndPoint{
   D gValue = 0.0;
   D gValueToSearchStart = 0.0;
   std::shared_ptr<ETP::searchEndPoint<P,D>> parent;
-  int parentIndex;
+  int parentIndex = -1;
   std::shared_ptr<ETP::Edge<P,D>> entryEdge = nullptr;
 
   searchEndPoint(){};

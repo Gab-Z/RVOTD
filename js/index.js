@@ -256,6 +256,27 @@ document.body.addEventListener( "click", e => {
 } );
 */
 
+const inverseSearchBut = document.body.appendChild( document.createElement("button"));
+inverseSearchBut.style.position = "absolute";
+inverseSearchBut.textContent = "inverse search";
+inverseSearchBut.style.top = 0;
+inverseSearchBut.style.left = 0;
+
+var revertClickInfo = { start:{}, end:{} };
+inverseSearchBut.addEventListener( "click", e => {
+  if( revertClickInfo.start != {} && revertClickInfo.end != {} ){
+    let tmpEnd = revertClickInfo.end;
+    revertClickInfo.end = revertClickInfo.start;
+    revertClickInfo.start = tmpEnd;
+    let SCALE =1;
+    let funnel = td.testTRAStarScale( revertClickInfo.start.x, revertClickInfo.start.y, revertClickInfo.end.x, revertClickInfo.end.y, SCALE );
+    console.log(  stringIndentifyObject( funnel ));
+    console.log( "end set at x:"+revertClickInfo.end.x+"/y:"+revertClickInfo.end.y+"/startId:"+td.getTriangleId(revertClickInfo.start.x, revertClickInfo.start.y, SCALE)+"/endId:"+td.getTriangleId(revertClickInfo.end.x, revertClickInfo.end.y, SCALE));
+    if( funnel.triangles[ 0 ].positions )fillTriangles( revertClickInfo, funnel.triangles, document.getElementById( "tmpCanvas" ), SCALE, "rgba(235, 221, 56, 0.5)" );
+  }
+})
+
+
 const triangulationBut = document.body.appendChild( document.createElement("button"));
 triangulationBut.style.position = "absolute";
 triangulationBut.textContent = "triangulate";
@@ -281,6 +302,7 @@ triangulationBut.addEventListener( "click", e => {
       clickInfo.first = false,
       cv = document.getElementById( "tmpCanvas" ),
       cv.getContext( "2d" ).clearRect( 0, 0, cv.width, cv.height );
+      revertClickInfo = { start:{}, end:{} };
     console.log( "start set at x:"+x+"/y:"+y+"/id:"+td.getTriangleId(x,y, SCALE));
 
     }else{
@@ -293,7 +315,9 @@ triangulationBut.addEventListener( "click", e => {
         console.log(  stringIndentifyObject( funnel ));
 
         console.log( "end set at x:"+x+"/y:"+y+"/startId:"+td.getTriangleId(clickInfo.start.x, clickInfo.start.y, SCALE)+"/endId:"+td.getTriangleId(clickInfo.end.x, clickInfo.end.y, SCALE));
-        if( funnel.triangles[ 0 ].positions )fillTriangles( funnel.triangles, document.getElementById( "tmpCanvas" ), SCALE, "rgba(235, 221, 56, 0.5)" );
+        if( funnel.triangles[ 0 ].positions )fillTriangles( clickInfo, funnel.triangles, document.getElementById( "tmpCanvas" ), SCALE, "rgba(235, 221, 56, 0.5)" );
+
+        revertClickInfo = clickInfo;
         clickInfo = { start:{}, end:{}, first: true };
         //
     }
@@ -452,7 +476,7 @@ function drawTriangles( _triangulation, _cv, _scale ){
   let ctx = _cv.getContext( "2d" ),
       scale = _scale || 1,
       nbTri = _triangulation.length;
-  ctx.font = '12px serif';
+  ctx.font = '9px serif';
   ctx.textBaseline = "middle";
   ctx.textAlign = "center"
   _triangulation.forEach( tri =>{
@@ -492,11 +516,11 @@ function drawTriangles( _triangulation, _cv, _scale ){
         a = tri.lowerBounds,
         n = tri.nodes;
     ctx.strokeStyle = "red";
-/*
-    if( a[ 0 ] > -1 ){ ctx.strokeText( a[ 0 ].toFixed(2)+"-"+n[ 0 ], to1x, to1y );  }
-    if( a[ 1 ] >  -1 ){ ctx.strokeText( a[ 1 ].toFixed(2)+"-"+n[ 1 ], to2x, to2y );  }
-    if( a[ 2 ] >  -1 ){ ctx.strokeText( a[ 2 ].toFixed(2)+"-"+n[ 2 ], to3x, to3y );  }
-*/
+
+    if( a[ 0 ] > -1 ){ ctx.strokeText( a[ 0 ].toFixed(2)/*+"-"+n[ 0 ]*/, to1x, to1y );  }
+    if( a[ 1 ] >  -1 ){ ctx.strokeText( a[ 1 ].toFixed(2)/*+"-"+n[ 1 ]*/, to2x, to2y );  }
+    if( a[ 2 ] >  -1 ){ ctx.strokeText( a[ 2 ].toFixed(2)/*+"-"+n[ 2 ]*/, to3x, to3y );  }
+
     ctx.strokeStyle = "black";
 
     let centroid = tri.centroid;
@@ -509,11 +533,12 @@ function drawTriangles( _triangulation, _cv, _scale ){
   })
 }
 
-function fillTriangles( _triangulation, _cv, _scale, _color ){
+function fillTriangles( _points, _triangulation, _cv, _scale, _color ){
   let ctx = _cv.getContext( "2d" ),
       scale = _scale || 1,
       nbTri = _triangulation.length;
   ctx.clearRect( 0, 0, _cv.width, _cv.height );
+
   _triangulation.forEach( tri =>{
     let p = tri.positions,
         c = tri.constrained;
@@ -526,6 +551,24 @@ function fillTriangles( _triangulation, _cv, _scale, _color ){
     ctx.closePath();
     ctx.fill();
   })
+
+  ctx.beginPath();
+  let crossSize = 3;
+  ctx.strokeStyle = "rgb(44, 111, 0)";
+  ctx.moveTo( _points.start.x - crossSize, _points.start.y - crossSize );
+  ctx.lineTo( _points.start.x + crossSize, _points.start.y + crossSize );
+  ctx.moveTo( _points.start.x + crossSize, _points.start.y - crossSize );
+  ctx.lineTo( _points.start.x - crossSize, _points.start.y + crossSize );
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.strokeStyle = "#e61818";
+  ctx.moveTo( _points.end.x - crossSize, _points.end.y - crossSize );
+  ctx.lineTo( _points.end.x + crossSize, _points.end.y + crossSize );
+  ctx.moveTo( _points.end.x + crossSize, _points.end.y - crossSize );
+  ctx.lineTo( _points.end.x - crossSize, _points.end.y + crossSize );
+  ctx.stroke();
+  ctx.strokeStyle = "black";
+
 }
 
 function drawWidths( _triangulation, _indices, _cv, _scale ){
